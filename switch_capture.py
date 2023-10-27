@@ -35,22 +35,21 @@ class Nexus_Switch:
     def __init__(self, data):
         print(f"NXOS Switch : {file}")
         # All regular expressions here
-        # capture disk usage from "dir" command
         putty_timestamp_pattern = re.compile(r"PuTTY log (\d{4}\.\d{2}.\d{2} \d{2}:\d{2}:\d{2})")
         running_config_pattern = re.compile(r"\#\sshow run(.+?)\#", re.DOTALL)
         show_version_pattern = re.compile(r"\#\sshow ver(.+?)\#", re.DOTALL)
         show_sysresources_pattern = re.compile(r"#\s?sh(?:ow)?\s?sys(?:tem)?\sres(?:ources)?\s\n+Load(.+?)\#", re.DOTALL)
-        show_processcpu_pattern = re.compile(r"\#\sshow process cpu(.+?)\#", re.DOTALL)
+        show_processcpu_pattern = re.compile(r"\#\sshow process cpu\s\n+PID(.+?)\#", re.DOTALL)
         show_inventory_pattern = re.compile(r"\#\sshow inv(.+?)\#", re.DOTALL)
         directory_pattern = re.compile(r"\#\sdir(.+?)\#", re.DOTALL)
 
-        running_config = self.extract_info(running_config_pattern, data, "No running config")
-        show_processcpu = self.extract_info(show_processcpu_pattern, data, "No show process cpu info")
-        show_version = self.extract_info(show_version_pattern, data, "No show version info")
-        show_sysresources = self.extract_info(show_sysresources_pattern, data, "No show sys resources info")
-        putty_timestamp = self.extract_info(putty_timestamp_pattern, data, "No putty timestamp")
-        show_inventory = self.extract_info(show_inventory_pattern, data, "No show inventory info")
-        dir_info = self.extract_info(directory_pattern, data, "No directory info")
+        running_config = self.extract_info(running_config_pattern, data, "NO `show running config` COMMAND")
+        show_processcpu = self.extract_info(show_processcpu_pattern, data, "NO `show process cpu` COMMAND")
+        show_version = self.extract_info(show_version_pattern, data, "NO `show version` COMMAND")
+        show_sysresources = self.extract_info(show_sysresources_pattern, data, "NO `show system resources` COMMAND")
+        putty_timestamp = self.extract_info(putty_timestamp_pattern, data, "NO `PuTTY log timestamp` in file")
+        show_inventory = self.extract_info(show_inventory_pattern, data, "NO `show inventory` COMMAND")
+        dir_info = self.extract_info(directory_pattern, data, "NO `dir` COMMAND")
 
         ip_address_info = self.extract_ip_address_info(running_config)
         hostname = self.get_hostname(running_config)
@@ -66,7 +65,7 @@ class Nexus_Switch:
         
         report_format = f"""=~=~=~=~=~=~=~=~=~=~=~==~=~=~=~=~=~=~=~=~=~=~=
 Report for File : {file}
-=~=~=~=~=~=~=~=~=~=~=~==~=~=~=~=~=~=~=~=~=~=~=
+~=~=~=~=~=~=~=~=~=~=~=~=~=~=~=~=~=~=~=~=~=~=~=
 IP Address       : {ip_address_info}
 Hostname         : {hostname}
 Model Number     : {model_number}
@@ -96,22 +95,45 @@ Putty Timestamp: {putty_datetime}
 
 Inventory Information:
 {inventory_info}
-
+---
 
 """
         self.export_report(report_format)
+
+        CSV_DICT = EXPORT_CSV_DICT.copy()
+        CSV_DICT["File Name"] = file
+        CSV_DICT["IP Address"] = ip_address_info
+        CSV_DICT["Hostname"] = hostname
+        CSV_DICT["Model Number"] = model_number
+        CSV_DICT["Serial Number"] = serial_number
+        CSV_DICT["Uptime"] = uptime
+        CSV_DICT["Software Version"] = software_version
+        CSV_DICT["Total Memory"] = total_memory
+        CSV_DICT["Used Memory"] = used_memory
+        CSV_DICT["Memory Percent Used"] = memory_usage_percent
+        CSV_DICT["Total Disk"] = total_disk
+        CSV_DICT["Used Disk"] = used_disk
+        CSV_DICT["Disk Percentage Used"] = disk_usage_percent
+        CSV_DICT["5-minute CPU Average"] = cpu_5min if cpu_utlization != "N/A" else cpu_utlization
+        CSV_DICT["1-minute CPU Average"] = cpu_1min
+        CSV_DICT["5-second CPU Average"] = cpu_5sec
+        CSV_DICT["Cisco Timestamp"] = cisco_datetime
+        CSV_DICT["Putty Timestamp"] = putty_datetime
+        CSV_DICT["Inventory Information"] = inventory_info
+        self.export_dict_to_csv(CSV_DICT)
 
 
     def get_hostname(self, running_config):
         if running_config is None: return "N/A"
 
-        hostname_pattern = re.compile(r"hostname\s+(.+?)\n")
-        switchname_pattern = re.compile(r"switchname\s+(.+?)\n")
+        hostname_pattern = re.compile(r"(?:hostname|switchname)\s+(.+?)\n")
+        match = hostname_pattern.search(running_config)
 
-        try:
-            hostname = switchname_pattern.search(running_config).group(1)
-        except AttributeError:
-            hostname = hostname_pattern.search(running_config).group(1)
+        if match:
+            hostname = match.group(1)
+        else:
+            hostname = "N/A"
+            print(f"    ERROR: MISSING HOSTNAME IN CONFIG")
 
         return hostname
     
@@ -151,7 +173,7 @@ Inventory Information:
             uptime_match = uptime_pattern.search(show_version_output)
             software_version_match = software_version_pattern.search(show_version_output)
         except AttributeError:
-            print(f"    INFO: NOT ALL VERDION INFO FOR FILE [{file}]")
+            print(f"    INFO: NOT ALL VERSION INFO FOR FILE [{file}]")
 
         if model_number_match:
             model_number = model_number_match.group(1).strip()
@@ -177,7 +199,7 @@ Inventory Information:
             used_memory = int(memory_usage_match[2])
             free_memory = int(memory_usage_match[3])
         except TypeError or AttributeError:
-            print(f"    ERROR: NO MEMORY INFO IN FILE [{file}]")
+            print(f"    ERROR: MISSING MEMORY INFO")
             total_memory = used_memory = "N/A"
 
         return total_memory, used_memory
@@ -193,7 +215,7 @@ Inventory Information:
             total_memory = int(disk_usage_match[3])
             used_memory = int(disk_usage_match[1])
         except TypeError and AttributeError:
-            print(f"    ERROR: NO DISK INFO IN FILE [{file}]")
+            print(f"    ERROR: MISSING DISK INFO")
             total_memory = used_memory = "N/A"
 
         return total_memory, used_memory
@@ -214,14 +236,14 @@ Inventory Information:
             cpu_5sec = cpu_5sec_pattern.search(show_sysresources).group(1)
         except:
             cpu_5min = cpu_1min = cpu_5sec = cpu_utlization = "N/A"
-            print(f"    ERROR: NO CPU USAGE IN FILE [{file}]")
+            print(f"    ERROR: MISSING CPU USAGE")
 
         try:
             cpu_utlization = cpu_utlization_pattern.search(show_sysresources).group(3)
             cpu_utlization = round(100 - float(cpu_utlization), 2)
         except:
             cpu_utlization = "N/A"
-            print(f"    ERROR: NO CPU UILIZATION IN FILE [{file}]")
+            print(f"    ERROR: MISSING CPU UILIZATION")
 
         return cpu_5min, cpu_1min, cpu_5sec, cpu_utlization
 
@@ -233,7 +255,7 @@ Inventory Information:
         try:
             inventory_matches = inventory_pattern.findall(show_inventory)
         except AttributeError:
-            print(f"    ERROR: No INVENTORY INFO IN FILE [{file}]")
+            print(f"    ERROR: MISSING INVENTORY INFO")
             return "N/A"
 
         for inventory in inventory_matches:
@@ -246,20 +268,26 @@ Inventory Information:
     
     def extract_ip_address_info(self, running_config):
         ip_address_pattern_file = re.compile(r"(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})")
+        authentication_info_pattern = re.compile(r"(aaa group server (?:tacacs\+|radius|tacacs) (\w+)\s+\n)(\s+.*?\n)+")
 
         ip_address = ip_address_pattern_file.search(file)
         
         if ip_address:
             return f"{ip_address.group(1)} (from file name)"
         else:
-            return "N/A"
+            try:
+                authentication_info = authentication_info_pattern.search(running_config).group(0)
+                return f"\nNO IP ADDRESS, SHOW AUTHENTICATION INFO:\n{'-.'*16}\n{authentication_info}{'-.'*16}"
+            except AttributeError:
+                print(f"    ERROR: MISSING IP ADDRESS")
+                return "N/A"
 
     def extract_info(self, pattern, file_data, error_message):
         try:
             info = pattern.search(file_data).group(1)
         except AttributeError:
             info = None
-            print(f"    ERROR: {error_message} IN FILE [{file}]")
+            print(f"    ERROR: {error_message} IN FILE")
 
             # for debugging
             # traceback.print_exc()
@@ -268,6 +296,18 @@ Inventory Information:
     def export_report(self, report):
         with open(f"{NXOS_SWITCH_FILE_NAME}", 'a') as f:
             f.write(report)
+    
+    def export_dict_to_csv(self, csv_dict):
+        # Extract the keys and values from the dictionary
+        keys = EXPORT_CSV_DICT.keys()
+        values = csv_dict.values()
+
+        # Write the data to a CSV file
+        with open(f"{NXOS_SWITCH_CSV_FILE_NAME}", 'a', newline='') as csv_file:
+            writer = csv.writer(csv_file)
+                        
+            writer.writerow(values)
+
 
 class Catalyst_Switch:
     def __init__(self, data):
@@ -284,16 +324,16 @@ class Catalyst_Switch:
         pnp_stack_pattern = re.compile(r"-\sshow inventory(.+?)\n\n\-{4,}", re.DOTALL)
 
         # Extract information from the file
-        running_config = self.extract_info(running_config_pattern, data, "No running config")
-        show_version_info = self.extract_info(show_version_pattern, data, "No show version info")
-        cpu_usage_info = self.extract_info(cpu_usage_pattern, data, "No CPU usage info")
-        memory_usage_info = self.extract_info(memory_usage_pattern, data, "No memory usage info")
-        disk_usage_info = self.extract_info(file_systems_pattern, data, "No file systems usage info")
-        cisco_datatime_info = self.extract_info(cisco_timestamp_pattern, data, "No cisco timestamp info")
-        putty_datetime_info = self.extract_info(putty_timestamp_pattern, data, "No putty timestamp info")
-        pnp_stack_info = self.extract_info(pnp_stack_pattern, data, "No pnp stack info")
+        running_config = self.extract_info(running_config_pattern, data, "No `show running config` command")
+        show_version_info = self.extract_info(show_version_pattern, data, "No `show version` command")
+        cpu_usage_info = self.extract_info(cpu_usage_pattern, data, "No `show process cpu` command")
+        memory_usage_info = self.extract_info(memory_usage_pattern, data, "No `show process memory` command")
+        disk_usage_info = self.extract_info(file_systems_pattern, data, "No file `show file systems` command")
+        cisco_datatime_info = self.extract_info(cisco_timestamp_pattern, data, "No `show clock` commadn")
+        putty_datetime_info = self.extract_info(putty_timestamp_pattern, data, "No `PuTTY log timestamp` in file")
+        pnp_stack_info = self.extract_info(pnp_stack_pattern, data, "No `show inventory` command")
 
-        ip_address_info = self.extract_ip_address_info(running_config) if running_config else "ERROR: No running config"
+        ip_address_info = self.extract_ip_address_info(running_config) if running_config else "     ERROR: MISSING running config"
         hostname = self.get_hostname(running_config)
         model_number, serial_number, uptime, software_version = self.extract_version_info(show_version_info)
         total_memory, used_memory = self.extract_memory_info(memory_usage_info)
@@ -307,7 +347,7 @@ class Catalyst_Switch:
         # Generate report format
         report_format = f"""=~=~=~=~=~=~=~=~=~=~=~==~=~=~=~=~=~=~=~=~=~=~=
 Report for File : {file}
-=~=~=~=~=~=~=~=~=~=~=~==~=~=~=~=~=~=~=~=~=~=~=
+~=~=~=~=~=~=~=~=~=~=~=~=~=~=~=~=~=~=~=~=~=~=~=
 IP Address       : {ip_address_info}
 Hostname         : {hostname}
 Model Number     : {model_number}
@@ -320,7 +360,7 @@ Total Memory : {total_memory}
 Used Memory  : {used_memory}
 Percent Used : {memory_usage_percent}
 
-{disk_type} Usage:
+Disk Usage:({disk_type})
 Total Disk      : {total_disk}
 Used Disk       : {used_disk}
 Percentage Used : {disk_usage_percent}
@@ -336,7 +376,7 @@ Putty Timestamp: {putty_datetime}
 
 Inventory Information:
 {inventory_info}
-
+---
 
 """
     
@@ -373,7 +413,7 @@ Inventory Information:
             hostname = hostname_pattern.search(running_config).group(1)
         except AttributeError:
             hostname = "N/A"
-            print(f"    ERROR: No HOSTNAME IN FILE [{file}]")
+            print(f"    ERROR: MISSING HOSTNAME")
 
         return hostname
 
@@ -435,7 +475,7 @@ Inventory Information:
             used_memory = int(memory_usage_match[2])
             free_memory = int(memory_usage_match[3])
         except TypeError or AttributeError:
-            print(f"    ERROR: NO MEMORY INFO IN FILE [{file}]")
+            print(f"    ERROR: MISSING MEMORY INFO")
             total_memory = used_memory = "N/A"
       
         return total_memory, used_memory
@@ -454,7 +494,7 @@ Inventory Information:
             disk_type = disk_usage_match[3]
 
         except TypeError or AttributeError:
-            print(f"    ERROR: NO DISK INFO IN FILE [{file}]")
+            print(f"    ERROR: MISSING DISK INFO")
             total_memory = used_memory = disk_type = "N/A"
         
         return total_memory, used_memory, disk_type
@@ -473,7 +513,7 @@ Inventory Information:
             cpu_5sec = cpu_5sec_pattern.search(cpu_usage).group(1)
         except AttributeError:
             cpu_5min = cpu_1min = cpu_5sec = "N/A"
-            print(f"    ERROR: CPU USAGE INFO IN [{file}]")
+            print(f"    ERROR: MISSING CPU USAGE INFO")
 
         return cpu_5min, cpu_1min, cpu_5sec
 
@@ -487,7 +527,7 @@ Inventory Information:
         try:
             inventory_matches = inventory_pattern.findall(show_inventory)
         except AttributeError:
-            print(f"    ERROR: NO INVENTORY INFO IN [{file}]")
+            print(f"    ERROR: MISSING INVENTORY INFO")
             return "N/A"
 
         for inventory in inventory_matches:
@@ -516,7 +556,8 @@ Inventory Information:
         # Initialize variables/compile regex patterns here
         ip_address_pattern = re.compile(r"ip address (\d{1,3}.\d{1,3}.\d{1,3}.\d{1,3} \d{1,3}.\d{1,3}.\d{1,3}.\d{1,3})")
         ip_address_pattern_file = re.compile(r"(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})")
-        ssh_source_interface_pattern = re.compile(r"ip ssh source-interface [Vv]lan(\d+)")
+        ssh_source_interface_pattern = re.compile(r"ip (?:ssh|tacacs|radius) source-interface [vV]lan(\d+)")
+
         source_interface_vlan = ""
 
         # Step 1
@@ -530,7 +571,7 @@ Inventory Information:
                 source_interface_vlan = ssh_source_interface_pattern.search(running_config).group(1)
                 
                 # Step 3
-                vlan_interface_match = re.search(r"interface Vlan" + source_interface_vlan + r"\n(.+?)\!\n", running_config, re.DOTALL).group(1)
+                vlan_interface_match = re.search(r"\!\ninterface Vlan" + source_interface_vlan + r"\n(.+?)\!\n", running_config, re.DOTALL).group(1)
                 ip_address = re.search(ip_address_pattern, vlan_interface_match).group(1)
                 return f"{ip_address} (from VLAN {source_interface_vlan})"
             except AttributeError:
@@ -543,7 +584,7 @@ Inventory Information:
             info = pattern.search(file_data).group(1)
         except AttributeError:
             info = None
-            print(f"    ERROR: {error_message} IN FILE [{file}]")
+            print(f"    ERROR: {error_message} IN FILE")
 
             # for debugging
             # traceback.print_exc()
@@ -567,6 +608,7 @@ Inventory Information:
 
 
 if __name__ == "__main__":
+    # get current path
     files = os.listdir()
     os.remove(f"{IOS_SWITCH_FILE_NAME}") if os.path.exists(f"{IOS_SWITCH_FILE_NAME}") else None
     os.remove(f"{NXOS_SWITCH_FILE_NAME}") if os.path.exists(f"{NXOS_SWITCH_FILE_NAME}") else None
@@ -591,7 +633,6 @@ if __name__ == "__main__":
     nxos_switch_pattern = re.compile(r"!Command:")
     ios_switch_pattern = re.compile(r"[Cc]isco IOS")
     unicode_escape_pattern = r'\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])'
-    vertical_tab_pattern = r''
 
 
     for file in files:
@@ -600,7 +641,6 @@ if __name__ == "__main__":
         with open(file, "r") as f:
             data = f.read()
             data = re.sub(unicode_escape_pattern, '', data)
-            data = re.sub(vertical_tab_pattern, '', data)
             if nxos_switch_pattern.search(data):
                 nexus_switch = Nexus_Switch(data)
                 processed_file.append(file)
