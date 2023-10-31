@@ -38,7 +38,7 @@ class Nexus_Switch:
         putty_timestamp_pattern = re.compile(r"PuTTY log (\d{4}\.\d{2}.\d{2} \d{2}:\d{2}:\d{2})")
         running_config_pattern = re.compile(r"\#\sshow run(.+?)\#", re.DOTALL)
         show_version_pattern = re.compile(r"\#\sshow ver(.+?)\#", re.DOTALL)
-        show_sysresources_pattern = re.compile(r"#\s?sh(?:ow)?\s?sys(?:tem)?\sres(?:ources)?\s\n+Load(.+?)\#", re.DOTALL)
+        show_sysresources_pattern = re.compile(r"#\s?sh(?:ow)?\s?sys(?:tem)?\sres(?:ource|ources)?\s\n+Load(.+?)\#", re.DOTALL)
         show_processcpu_pattern = re.compile(r"\#\sshow process cpu\s\n+PID(.+?)\#", re.DOTALL)
         show_inventory_pattern = re.compile(r"\#\sshow inv(.+?)\#", re.DOTALL)
         directory_pattern = re.compile(r"\#\sdir(.+?)\#", re.DOTALL)
@@ -51,13 +51,20 @@ class Nexus_Switch:
         show_inventory = self.extract_info(show_inventory_pattern, data, "NO `show inventory` COMMAND")
         dir_info = self.extract_info(directory_pattern, data, "NO `dir` COMMAND")
 
-        ip_address_info = self.extract_ip_address_info(running_config)
         hostname = self.get_hostname(running_config)
+        ip_address_info = self.extract_ip_address_info(running_config, hostname)
         model_number, serial_number, uptime, software_version = self.extract_version_info(show_version)
+        
         total_memory, used_memory = self.extract_memory_info(show_sysresources)
+        total_memory_mb = round(total_memory/1024, 2) if total_memory != "N/A" else "N/A"
+        used_memory_mb = round(used_memory/1024, 2) if used_memory != "N/A" else "N/A"
         memory_usage_percent = "N/A" if total_memory == "N/A" else f"{round(used_memory/total_memory*100, 2)}%"
+
         total_disk, used_disk = self.extract_disk_info(dir_info)
+        total_disk_mb = round(total_disk/(1024**2), 2) if total_disk != "N/A" else "N/A"
+        used_disk_mb = round(used_disk/(1024**2), 2) if used_disk != "N/A" else "N/A"
         disk_usage_percent = "N/A" if total_disk == "N/A" else f"{round(used_disk/total_disk*100, 2)}%"
+
         cisco_datetime, putty_datetime = self.compare_clocks(running_config, putty_timestamp)
         cpu_5min, cpu_1min, cpu_5sec, cpu_utlization = self.extract_cpu_info(show_processcpu)
         inventory_info = self.extract_inventory_info(show_inventory)
@@ -74,13 +81,13 @@ Uptime           : {uptime}
 Software Version : {software_version}
 
 Memory Usage:
-Total Memory : {total_memory}
-Used Memory  : {used_memory}
+Total Memory : {total_memory} K, {total_memory_mb} MiB
+Used Memory  : {used_memory} K, {used_memory_mb} MiB
 Percent Used : {memory_usage_percent}
 
 Disk Usage:
-Total Disk      : {total_disk}
-Used Disk       : {used_disk}
+Total Disk      : {total_disk} bytes, {total_disk_mb} MiB
+Used Disk       : {used_disk} bytes, {used_disk_mb} MiB
 Percentage Used : {disk_usage_percent}
 
 CPU Usage:
@@ -133,7 +140,7 @@ Inventory Information:
             hostname = match.group(1)
         else:
             hostname = "N/A"
-            print(f"    ERROR: MISSING HOSTNAME IN CONFIG")
+            print(f"    WARN: MISSING HOSTNAME IN CONFIG")
 
         return hostname
     
@@ -173,7 +180,7 @@ Inventory Information:
             uptime_match = uptime_pattern.search(show_version_output)
             software_version_match = software_version_pattern.search(show_version_output)
         except AttributeError:
-            print(f"    INFO: NOT ALL VERSION INFO FOR FILE [{file}]")
+            print(f"    WARN: NOT ALL VERSION INFO FOR FILE [{file}]")
 
         if model_number_match:
             model_number = model_number_match.group(1).strip()
@@ -199,7 +206,7 @@ Inventory Information:
             used_memory = int(memory_usage_match[2])
             free_memory = int(memory_usage_match[3])
         except TypeError or AttributeError:
-            print(f"    ERROR: MISSING MEMORY INFO")
+            print(f"    WARN: MISSING MEMORY INFO")
             total_memory = used_memory = "N/A"
 
         return total_memory, used_memory
@@ -214,8 +221,8 @@ Inventory Information:
 
             total_memory = int(disk_usage_match[3])
             used_memory = int(disk_usage_match[1])
-        except TypeError and AttributeError:
-            print(f"    ERROR: MISSING DISK INFO")
+        except TypeError or AttributeError:
+            print(f"    WARN: MISSING DISK INFO")
             total_memory = used_memory = "N/A"
 
         return total_memory, used_memory
@@ -236,14 +243,14 @@ Inventory Information:
             cpu_5sec = cpu_5sec_pattern.search(show_sysresources).group(1)
         except:
             cpu_5min = cpu_1min = cpu_5sec = cpu_utlization = "N/A"
-            print(f"    ERROR: MISSING CPU USAGE")
+            print(f"    WARN: MISSING CPU USAGE")
 
         try:
             cpu_utlization = cpu_utlization_pattern.search(show_sysresources).group(3)
             cpu_utlization = round(100 - float(cpu_utlization), 2)
         except:
             cpu_utlization = "N/A"
-            print(f"    ERROR: MISSING CPU UILIZATION")
+            print(f"    WARN: MISSING CPU UILIZATION")
 
         return cpu_5min, cpu_1min, cpu_5sec, cpu_utlization
 
@@ -255,7 +262,7 @@ Inventory Information:
         try:
             inventory_matches = inventory_pattern.findall(show_inventory)
         except AttributeError:
-            print(f"    ERROR: MISSING INVENTORY INFO")
+            print(f"    WARN: MISSING INVENTORY INFO")
             return "N/A"
 
         for inventory in inventory_matches:
@@ -266,11 +273,13 @@ Inventory Information:
         
         return inventory_list
     
-    def extract_ip_address_info(self, running_config):
+    def extract_ip_address_info(self, running_config, hostname):
         ip_address_pattern_file = re.compile(r"(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})")
         authentication_info_pattern = re.compile(r"(aaa group server (?:tacacs\+|radius|tacacs) (\w+)\s+\n)(\s+.*?\n)+")
 
-        ip_address = ip_address_pattern_file.search(file)
+        # remove hostname from file name
+        filename = file.replace(f"{hostname}", "")        
+        ip_address = ip_address_pattern_file.search(filename)
         
         if ip_address:
             return f"{ip_address.group(1)} (from file name)"
@@ -279,7 +288,7 @@ Inventory Information:
                 authentication_info = authentication_info_pattern.search(running_config).group(0)
                 return f"\nNO IP ADDRESS, SHOW AUTHENTICATION INFO:\n{'-.'*16}\n{authentication_info}{'-.'*16}"
             except AttributeError:
-                print(f"    ERROR: MISSING IP ADDRESS")
+                print(f"    WARN: MISSING IP ADDRESS")
                 return "N/A"
 
     def extract_info(self, pattern, file_data, error_message):
@@ -333,13 +342,20 @@ class Catalyst_Switch:
         putty_datetime_info = self.extract_info(putty_timestamp_pattern, data, "No `PuTTY log timestamp` in file")
         pnp_stack_info = self.extract_info(pnp_stack_pattern, data, "No `show inventory` command")
 
-        ip_address_info = self.extract_ip_address_info(running_config) if running_config else "     ERROR: MISSING running config"
         hostname = self.get_hostname(running_config)
+        ip_address_info = self.extract_ip_address_info(running_config, hostname) if running_config else "     ERROR: MISSING running config"
         model_number, serial_number, uptime, software_version = self.extract_version_info(show_version_info)
+        
         total_memory, used_memory = self.extract_memory_info(memory_usage_info)
+        total_memory_mb = round(total_memory/(1024**2), 2) if total_memory != "N/A" else "N/A"
+        used_memory_mb = round(used_memory/(1024**2), 2) if used_memory != "N/A" else "N/A"
         memory_usage_percent = "N/A" if total_memory == "N/A" else f"{round(used_memory/total_memory*100, 2)}%"
+
         total_disk, used_disk, disk_type = self.extract_disk_info(disk_usage_info)
+        total_disk_mb = round(total_disk/1024**2, 2) if total_disk != "N/A" else "N/A"
+        used_disk_mb = round(used_disk/1024**2, 2) if used_disk != "N/A" else "N/A"
         disk_usage_percent = "N/A" if total_disk == "N/A" else f"{round(used_disk/total_disk*100, 2)}%"
+
         cpu_5min, cpu_1min, cpu_5sec = self.extract_cpu_info(cpu_usage_info)
         cisco_datetime, putty_datetime = self.compare_clocks(putty_datetime_info, cisco_datatime_info)
         inventory_info, inventory_info_list = self.extract_inventory_info(pnp_stack_info)
@@ -356,13 +372,13 @@ Uptime           : {uptime}
 Software Version : {software_version}
 
 Memory Usage:
-Total Memory : {total_memory}
-Used Memory  : {used_memory}
+Total Memory : {total_memory} bytes, {total_memory_mb} MiB
+Used Memory  : {used_memory} bytes, {used_memory_mb} MiB
 Percent Used : {memory_usage_percent}
 
 Disk Usage:({disk_type})
-Total Disk      : {total_disk}
-Used Disk       : {used_disk}
+Total Disk      : {total_disk} bytes, {total_disk_mb} MiB
+Used Disk       : {used_disk} bytes, {used_disk_mb} MiB
 Percentage Used : {disk_usage_percent}
 
 CPU Usage:
@@ -413,7 +429,7 @@ Inventory Information:
             hostname = hostname_pattern.search(running_config).group(1)
         except AttributeError:
             hostname = "N/A"
-            print(f"    ERROR: MISSING HOSTNAME")
+            print(f"    WARN: MISSING HOSTNAME")
 
         return hostname
 
@@ -449,7 +465,7 @@ Inventory Information:
             uptime_match = uptime_pattern.search(show_version_output)
             software_version_match = software_version_pattern.search(show_version_output)
         except AttributeError:
-            print(f"    INFO: NOT ALL VERSION IN FILE [{file}]")
+            print(f"    WARN: NOT ALL VERSION IN FILE [{file}]")
 
         if model_number_match:
             model_number = model_number_match.group(1)
@@ -475,7 +491,7 @@ Inventory Information:
             used_memory = int(memory_usage_match[2])
             free_memory = int(memory_usage_match[3])
         except TypeError or AttributeError:
-            print(f"    ERROR: MISSING MEMORY INFO")
+            print(f"    WARN: MISSING MEMORY INFO")
             total_memory = used_memory = "N/A"
       
         return total_memory, used_memory
@@ -494,7 +510,7 @@ Inventory Information:
             disk_type = disk_usage_match[3]
 
         except TypeError or AttributeError:
-            print(f"    ERROR: MISSING DISK INFO")
+            print(f"    WARN: MISSING DISK INFO")
             total_memory = used_memory = disk_type = "N/A"
         
         return total_memory, used_memory, disk_type
@@ -513,7 +529,7 @@ Inventory Information:
             cpu_5sec = cpu_5sec_pattern.search(cpu_usage).group(1)
         except AttributeError:
             cpu_5min = cpu_1min = cpu_5sec = "N/A"
-            print(f"    ERROR: MISSING CPU USAGE INFO")
+            print(f"    WARN: MISSING CPU USAGE INFO")
 
         return cpu_5min, cpu_1min, cpu_5sec
 
@@ -527,7 +543,7 @@ Inventory Information:
         try:
             inventory_matches = inventory_pattern.findall(show_inventory)
         except AttributeError:
-            print(f"    ERROR: MISSING INVENTORY INFO")
+            print(f"    WARN: MISSING INVENTORY INFO")
             return "N/A"
 
         for inventory in inventory_matches:
@@ -543,7 +559,7 @@ Inventory Information:
 
         return inventory_list_str, inventory_list
 
-    def extract_ip_address_info(self, running_config):
+    def extract_ip_address_info(self, running_config, hostname):
         """
         Step to extract IP address information
 
@@ -561,7 +577,8 @@ Inventory Information:
         source_interface_vlan = ""
 
         # Step 1
-        ip_address = ip_address_pattern_file.search(file)
+        filename = file.replace(f"{hostname}", "")
+        ip_address = ip_address_pattern_file.search(filename)
         
         if ip_address:
             return f"{ip_address.group(1)} (from file name)"
