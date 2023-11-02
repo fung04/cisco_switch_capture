@@ -497,7 +497,7 @@ Inventory Information:
         return total_memory, used_memory
     
     def extract_disk_info(self, disk_usage):
-        if disk_usage is None: return "N/A", "N/A"
+        if disk_usage is None: return "N/A", "N/A", 'N/A'
 
         # Initialize variables/compile regex patterns here
         disk_usage_pattern = re.compile(r"\*\s+(\d+)\s+(\d+)\s+(\w+)")
@@ -534,7 +534,7 @@ Inventory Information:
         return cpu_5min, cpu_1min, cpu_5sec
 
     def extract_inventory_info(self, show_inventory):
-        if show_inventory is None: return "N/A"
+        if show_inventory is None: return "N/A", "N/A"
 
         inventory_list = []
         inventory_pattern = re.compile(r"NAME:\s+\"(.+?),\s+(.+?)\nPID:\s+(.+?),(.+?)SN:\s+(.+?)\n")
