@@ -3,7 +3,7 @@ import os
 import csv
 from datetime import datetime
 
-TEXT_FILE_EXTENSION = ".txt"
+TEXT_FILE_EXTENSION = [".txt", ".log"]
 NXOS_SWITCH_FILE_NAME = "2_NXOS_report.txt"
 IOS_SWITCH_FILE_NAME = "1_IOS_report.txt"
 NXOS_SWITCH_CSV_FILE_NAME = "2_NXOS_report.csv"
@@ -35,7 +35,7 @@ class Nexus_Switch:
     def __init__(self, data):
         print(f"NXOS Switch : {file}")
         # All regular expressions here
-        putty_timestamp_pattern = re.compile(r"PuTTY log (\d{4}\.\d{2}.\d{2} \d{2}:\d{2}:\d{2})")
+        putty_timestamp_pattern = re.compile(r"(?:PuTTY|MobaXterm) log (\d{4}\.\d{2}.\d{2} \d{2}:\d{2}:\d{2})")
         running_config_pattern = re.compile(r"\#\sshow run(.+?)\#", re.DOTALL)
         show_version_pattern = re.compile(r"\#\sshow ver(.+?)\#", re.DOTALL)
         show_sysresources_pattern = re.compile(r"#\s?sh(?:ow)?\s?sys(?:tem)?\sres(?:ource|ources)?\s\n+Load(.+?)\#", re.DOTALL)
@@ -322,7 +322,7 @@ class Catalyst_Switch:
     def __init__(self, data):
         print(f"IOS Switch: {file}")
         # All regular expressions here
-        putty_timestamp_pattern = re.compile(r"PuTTY log (\d{4}\.\d{2}.\d{2} \d{2}:\d{2}:\d{2})")
+        putty_timestamp_pattern = re.compile(r"(?:PuTTY|MobaXterm) log (\d{4}\.\d{2}.\d{2} \d{2}:\d{2}:\d{2})")
         # require show tech to be run
         show_version_pattern = re.compile(r"-\sshow version(.+?)\n\n\n\-{4,}", re.DOTALL)
         running_config_pattern = re.compile(r"-\sshow running-config(.+?)\n\-{4,}", re.DOTALL)
@@ -632,7 +632,7 @@ if __name__ == "__main__":
     os.remove(f"{IOS_SWITCH_CSV_FILE_NAME}") if os.path.exists(f"{IOS_SWITCH_CSV_FILE_NAME}") else None
     os.remove(f"{NXOS_SWITCH_CSV_FILE_NAME}") if os.path.exists(f"{NXOS_SWITCH_CSV_FILE_NAME}") else None
 
-    files = [file for file in os.listdir() if file.endswith(TEXT_FILE_EXTENSION)]
+    files = [file for file in os.listdir() if os.path.splitext(file)[1] in TEXT_FILE_EXTENSION]
 
     # create csv file header
     with open(f"{IOS_SWITCH_CSV_FILE_NAME}", 'a', newline='') as csv_file:
