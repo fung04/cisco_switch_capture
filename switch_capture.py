@@ -337,7 +337,7 @@ class Catalyst_Switch:
         show_version_info = self.extract_info(show_version_pattern, data, "No `show version` command")
         cpu_usage_info = self.extract_info(cpu_usage_pattern, data, "No `show process cpu` command")
         memory_usage_info = self.extract_info(memory_usage_pattern, data, "No `show process memory` command")
-        disk_usage_info = self.extract_info(file_systems_pattern, data, "No file `show file systems` command")
+        disk_usage_info = self.extract_info(file_systems_pattern, data, "No `show file systems` command") #find at dir command if fail
         cisco_datatime_info = self.extract_info(cisco_timestamp_pattern, data, "No `show clock` commadn")
         putty_datetime_info = self.extract_info(putty_timestamp_pattern, data, "No `PuTTY log timestamp` in file")
         pnp_stack_info = self.extract_info(pnp_stack_pattern, data, "No `show inventory` command")
@@ -451,6 +451,7 @@ Inventory Information:
 
     def extract_version_info(self, show_version_output):
         if show_version_output is None: return "N/A", "N/A", "N/A", "N/A"
+        # TODO: Add support for Core Switches
 
         # Initialize variables/compile regex patterns here
         model_number_pattern = re.compile(r"Model [Nn]umber\s+:\s+(.+?)\n")
@@ -469,20 +470,39 @@ Inventory Information:
 
         if model_number_match:
             model_number = model_number_match.group(1)
+        elif model_number_match == None:
+            model_number_pattern = re.compile(r"License\sInformation\sfor\s\'(.*?)\'\n")
+            model_number = model_number_pattern.search(show_version_output).group(1)
+        else:
+            print(f"    WARN: MISSING MODEL NUMBER IN FILE [{file}]")
+
         if serial_number_match:
             serial_number = serial_number_match.group(1)
+        elif serial_number_match == None:
+            serial_number_pattern = re.compile(r"Processor\s[Bb]oard\sID\s(.*?)\n")
+            serial_number = serial_number_pattern.search(show_version_output).group(1)
+        else:
+            print(f"    WARN: MISSING SERIAL NUMBER IN FILE [{file}]")
+
         if uptime_match:
             uptime = uptime_match.group(1)
+        
         if software_version_match:
             software_version = software_version_match.group(1)
+        elif software_version_match == None:
+            software_version_pattern = re.compile(r"ROM:\s(.*?)\n")
+            software_version = software_version_pattern.search(show_version_output).group(1)
+        else:
+            print(f"    WARN: MISSING SOFTWARE VERSION IN FILE [{file}]")
 
         return model_number, serial_number, uptime, software_version
     
     def extract_memory_info(self, memory_usage):
         if memory_usage is None: return "N/A", "N/A"
+        # TODO: Add support for Core Switches
 
         # Initialize variables/compile regex patterns here
-        memory_usage_pattern = re.compile(r"Processor Pool Total:\s+(\d+) Used:\s+(\d+) Free:\s+(\d+)")
+        memory_usage_pattern = re.compile(r"Processor Pool Total:\s+(\d+) Used:\s+(\d+) Free:\s+(\d+)|System memory\s+:\s+(\d+)K\stotal,\s(\d+)K\sused,\s(\d+)K")
                 
         try:
             memory_usage_match = memory_usage_pattern.search(memory_usage)
@@ -490,9 +510,18 @@ Inventory Information:
             total_memory = int(memory_usage_match[1])
             used_memory = int(memory_usage_match[2])
             free_memory = int(memory_usage_match[3])
-        except TypeError or AttributeError:
+        except AttributeError:
             print(f"    WARN: MISSING MEMORY INFO")
             total_memory = used_memory = "N/A"
+        except TypeError:
+            if memory_usage_match[4] is not None:
+                total_memory = int(memory_usage_match[4])*1000
+                used_memory = int(memory_usage_match[5])*1000
+                free_memory = int(memory_usage_match[6])*1000
+            else:
+                total_memory = used_memory = "N/A"
+                print(f"    WARN: MISSING MEMORY INFO")
+
       
         return total_memory, used_memory
     
@@ -537,8 +566,8 @@ Inventory Information:
         if show_inventory is None: return "N/A", "N/A"
 
         inventory_list = []
-        inventory_pattern = re.compile(r"NAME:\s+\"(.+?),\s+(.+?)\nPID:\s+(.+?),(.+?)SN:\s+(.+?)\n")
-        switch_keyworad_pattern = re.compile(r"Switch\s+\d{1,2}\"")
+        inventory_pattern = re.compile(r"NAME:\s+(.+?),\s+(.+?)\nPID:\s+(.+?),(.+?)SN:\s+(.+?)\n")
+        switch_keyworad_pattern = re.compile(r"\"(?:\d{1,2}|Switch\s+\d{1,2}|Switch\d{1,2}\s+System)\"")
         
         try:
             inventory_matches = inventory_pattern.findall(show_inventory)
@@ -550,7 +579,7 @@ Inventory Information:
             for item in inventory:
                 switch = switch_keyworad_pattern.search(item)
                 if switch:
-                    inventory_list.append(f"Name: {inventory[0].replace('"',"")}, PID: {inventory[2].strip()}, SN: {inventory[4].strip()}")
+                    inventory_list.append(f"Name: {inventory[0]}, PID: {inventory[2].strip()}, SN: {inventory[4].strip()}")
         inventory_list_str = "\n".join(inventory_list)
 
         if inventory_list_str == "":
