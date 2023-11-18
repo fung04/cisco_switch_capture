@@ -1,15 +1,18 @@
 import re
 import os
 import csv
+import logging
 from datetime import datetime
 
 SERIAL_NUMBER_LIST = []
 
 TEXT_FILE_EXTENSION = [".txt", ".log"]
-NXOS_SWITCH_FILE_NAME = "2_NXOS_report.txt"
-IOS_SWITCH_FILE_NAME = "1_IOS_report.txt"
-NXOS_SWITCH_CSV_FILE_NAME = "2_NXOS_report.csv"
-IOS_SWITCH_CSV_FILE_NAME = "1_IOS_report.csv"
+OUTPUT_FOLDER = "output"
+LOG_FILE_NAME = f"{OUTPUT_FOLDER}/switch_capture.log"
+NXOS_SWITCH_FILE_NAME = f"{OUTPUT_FOLDER}/2_NXOS_report.txt"
+IOS_SWITCH_FILE_NAME = f"{OUTPUT_FOLDER}/1_IOS_report.txt"
+NXOS_SWITCH_CSV_FILE_NAME = f"{OUTPUT_FOLDER}/2_NXOS_report.csv"
+IOS_SWITCH_CSV_FILE_NAME = f"{OUTPUT_FOLDER}/1_IOS_report.csv"
 
 EXPORT_CSV_DICT = {
     "File Name": "N/A",
@@ -35,7 +38,7 @@ EXPORT_CSV_DICT = {
 
 class Nexus_Switch:
     def __init__(self, data):
-        print(f"NXOS Switch : {file}")
+        logging.info(f"NXOS Switch : {file}")
         # All regular expressions here
         putty_timestamp_pattern = re.compile(r"(?:PuTTY|MobaXterm) log (\d{4}\.\d{2}.\d{2} \d{2}:\d{2}:\d{2})")
         running_config_pattern = re.compile(r"\#\sshow run(.+?)\#", re.DOTALL)
@@ -45,16 +48,16 @@ class Nexus_Switch:
         show_inventory_pattern = re.compile(r"\#\sshow inv(.+?)\#", re.DOTALL)
         directory_pattern = re.compile(r"\#\sdir(.+?)\#", re.DOTALL)
 
-        running_config = self.extract_info(running_config_pattern, data, "NO `show running config` COMMAND")
-        show_processcpu = self.extract_info(show_processcpu_pattern, data, "NO `show process cpu` COMMAND")
-        show_version = self.extract_info(show_version_pattern, data, "NO `show version` COMMAND")
-        show_sysresources = self.extract_info(show_sysresources_pattern, data, "NO `show system resources` COMMAND")
-        putty_timestamp = self.extract_info(putty_timestamp_pattern, data, "NO `PuTTY log timestamp` in file")
-        show_inventory = self.extract_info(show_inventory_pattern, data, "NO `show inventory` COMMAND")
-        dir_info = self.extract_info(directory_pattern, data, "NO `dir` COMMAND")
+        running_config = self.extract_info(running_config_pattern, data, "No `show running config` command")
+        show_processcpu = self.extract_info(show_processcpu_pattern, data, "No `show process cpu` command")
+        show_version = self.extract_info(show_version_pattern, data, "No `show version` command")
+        show_sysresources = self.extract_info(show_sysresources_pattern, data, "No `show system resources` command")
+        putty_timestamp = self.extract_info(putty_timestamp_pattern, data, "No `PuTTY log timestamp` in file")
+        show_inventory = self.extract_info(show_inventory_pattern, data, "No `show inventory` command")
+        dir_info = self.extract_info(directory_pattern, data, "No `dir` command")
 
         hostname = self.get_hostname(running_config)
-        ip_address_info = self.extract_ip_address_info(running_config, hostname)
+        ip_address_info, ip_address = self.extract_ip_address_info(running_config, hostname)
         model_number, serial_number, uptime, software_version = self.extract_version_info(show_version)
         
         total_memory, used_memory = self.extract_memory_info(show_sysresources)
@@ -69,7 +72,7 @@ class Nexus_Switch:
 
         cisco_datetime, putty_datetime = self.compare_clocks(running_config, putty_timestamp)
         cpu_5min, cpu_1min, cpu_5sec, cpu_utlization = self.extract_cpu_info(show_processcpu)
-        inventory_info = self.extract_inventory_info(show_inventory)
+        inventory_info, inventory_dict_list = self.extract_inventory_info(show_inventory)
         
         
         report_format = f"""=~=~=~=~=~=~=~=~=~=~=~==~=~=~=~=~=~=~=~=~=~=~=
@@ -111,7 +114,7 @@ Inventory Information:
 
         CSV_DICT = EXPORT_CSV_DICT.copy()
         CSV_DICT["File Name"] = file
-        CSV_DICT["IP Address"] = ip_address_info
+        CSV_DICT["IP Address"] = ip_address
         CSV_DICT["Hostname"] = hostname
         CSV_DICT["Model Number"] = model_number
         CSV_DICT["Serial Number"] = serial_number
@@ -128,7 +131,7 @@ Inventory Information:
         CSV_DICT["5-second CPU Average"] = cpu_5sec
         CSV_DICT["Cisco Timestamp"] = cisco_datetime
         CSV_DICT["Putty Timestamp"] = putty_datetime
-        CSV_DICT["Inventory Information"] = inventory_info
+        CSV_DICT["Inventory Information"] = inventory_dict_list
         self.export_dict_to_csv(CSV_DICT)
 
 
@@ -136,35 +139,39 @@ Inventory Information:
         if running_config is None: return "N/A"
 
         hostname_pattern = re.compile(r"(?:hostname|switchname)\s+(.+?)\n")
-        match = hostname_pattern.search(running_config)
 
-        if match:
-            hostname = match.group(1)
-        else:
+        try:
+            hostname = hostname_pattern.search(running_config).group(1)
+        except AttributeError:
             hostname = "N/A"
-            print(f"    WARN: MISSING HOSTNAME IN CONFIG")
-
+            logging.warning(f"MISSING HOSTNAME IN CONFIG")
+        
         return hostname
     
     def compare_clocks(self, running_config, putty_timestamp):
         if putty_timestamp is None or running_config is None: return "N/A", "N/A"
-        
+
         cicso_time_pattern = re.compile(r"!Time:\s(.+?)\n")
         cisco_timezone_pattern = re.compile(r"clock timezone\s(\w{1,3})(.+?)\n")
         cisco_format = f'%a %b %d %H:%M:%S %Y'
-        
-        cisco_time_str = cicso_time_pattern.search(running_config).group(1).replace("  ", " ")
-        
-        try:
-            cisco_tz = cisco_timezone_pattern.search(running_config).group(1)
-        except AttributeError:
-            cisco_tz = "N/A"
-        finally:  
-                # Convert Cisco timestamp and Putty timestamp to datetime objects
-                putty_datetime = datetime.strptime(putty_timestamp, '%Y.%m.%d %H:%M:%S')
-                cisco_datetime = f"{datetime.strptime(cisco_time_str, cisco_format)} {cisco_tz}"
 
-                return cisco_datetime, putty_datetime
+        cisco_time_match = cicso_time_pattern.search(running_config)
+        if not cisco_time_match:
+            logging.warning(f"MISSING CISCO TIMESTAMP IN CONFIG")
+            return "N/A", datetime.strptime(putty_timestamp, '%Y.%m.%d %H:%M:%S')
+
+        cisco_time_str = cisco_time_match.group(1).replace("  ", " ")
+        try:
+            cisco_tz_match = cisco_timezone_pattern.search(running_config)
+            cisco_tz = cisco_tz_match.group(1) if cisco_tz_match else "N/A"
+
+            putty_datetime = datetime.strptime(putty_timestamp, '%Y.%m.%d %H:%M:%S')
+            cisco_datetime = f"{datetime.strptime(cisco_time_str, cisco_format)} {cisco_tz}"
+
+            return cisco_datetime, putty_datetime
+        except ValueError:
+            logging.warning(f"MISSING TIMEZONE IN CONFIG")
+            return "N/A", "N/A"
     
     def extract_version_info(self, show_version_output):
         if show_version_output is None: return "N/A", "N/A", "N/A", "N/A"
@@ -176,23 +183,31 @@ Inventory Information:
         software_version_pattern = re.compile(r"\s?NXOS:\s(.+?)\n")
         model_number = serial_number = uptime = software_version = "N/A"
 
-        try:
-            model_number_match = model_number_pattern.search(show_version_output)
-            serial_number_match = serial_number_pattern.search(show_version_output)
-            uptime_match = uptime_pattern.search(show_version_output)
-            software_version_match = software_version_pattern.search(show_version_output)
-        except AttributeError:
-            print(f"    WARN: NOT ALL VERSION INFO FOR FILE [{file}]")
+        model_number_match = model_number_pattern.search(show_version_output)
+        serial_number_match = serial_number_pattern.search(show_version_output)
+        uptime_match = uptime_pattern.search(show_version_output)
+        software_version_match = software_version_pattern.search(show_version_output)
 
         if model_number_match:
             model_number = model_number_match.group(1).strip()
+        else:
+            logging.warning(f"MISSING MODEL NUMBER IN `show version`")
+        
         if serial_number_match:
             serial_number = serial_number_match.group(1)
             SERIAL_NUMBER_LIST.append(serial_number)
+        else:
+            logging.warning(f"MISSING SERIAL NUMBER IN `show version`")
+
         if uptime_match:
             uptime = uptime_match.group(1)
+        else:
+            logging.warning(f"MISSING UPTIME IN `show version`")
+        
         if software_version_match:
             software_version = software_version_match.group(1)
+        else:
+            logging.warning(f"MISSING SOFTWARE VERSION IN `show version`")
 
         return model_number, serial_number, uptime, software_version
 
@@ -207,9 +222,9 @@ Inventory Information:
 
             total_memory = int(memory_usage_match[1])
             used_memory = int(memory_usage_match[2])
-            free_memory = int(memory_usage_match[3])
+            # free_memory = int(memory_usage_match[3])
         except TypeError or AttributeError:
-            print(f"    WARN: MISSING MEMORY INFO")
+            logging.warning(f"MISSING MEMORY INFO")
             total_memory = used_memory = "N/A"
 
         return total_memory, used_memory
@@ -217,23 +232,23 @@ Inventory Information:
     def extract_disk_info(self, dir_info):
         if dir_info is None: return "N/A", "N/A"
 
-        disk_usage_pattern = re.compile(r"(\d+)\sbytes\sused\n(\d+)\sbytes\sfree\n(\d+)\sbytes\stotal")
+        disk_usage_pattern = re.compile(r"(\d+)\sbytes\sused\n\s*(\d+)\sbytes\sfree\n\s*(\d+)\sbytes\stotal")
 
         try:
             disk_usage_match = disk_usage_pattern.search(dir_info)
 
             total_memory = int(disk_usage_match[3])
             used_memory = int(disk_usage_match[1])
-        except TypeError or AttributeError:
-            print(f"    WARN: MISSING DISK INFO")
-            total_memory = used_memory = "N/A"
+            # free_memory = int(disk_usage_match[2])
+        except (TypeError, AttributeError):
+            logging.warning(f"MISSING DISK INFO")
+            total_memory = used_memory = "N/A", "N/A"
 
         return total_memory, used_memory
     
     def extract_cpu_info(self, show_sysresources):
         if show_sysresources is None: return "N/A", "N/A", "N/A", "N/A"
         
-
         # Initialize variables/compile regex patterns here
         cpu_5min_pattern = re.compile(r"five minutes: (.+?)\n")
         cpu_1min_pattern = re.compile(r"one minute: (.+?);")
@@ -246,36 +261,52 @@ Inventory Information:
             cpu_5sec = cpu_5sec_pattern.search(show_sysresources).group(1)
         except:
             cpu_5min = cpu_1min = cpu_5sec = cpu_utlization = "N/A"
-            print(f"    WARN: MISSING CPU USAGE")
+            logging.warning(f"MISSING CPU USAGE INFO")
 
         try:
             cpu_utlization = cpu_utlization_pattern.search(show_sysresources).group(3)
             cpu_utlization = round(100 - float(cpu_utlization), 2)
         except:
             cpu_utlization = "N/A"
-            print(f"    WARN: MISSING CPU UILIZATION")
+            logging.warning(f"MISSING CPU UILIZATION")
 
         return cpu_5min, cpu_1min, cpu_5sec, cpu_utlization
 
     def extract_inventory_info(self, show_inventory):
-        if show_inventory is None: return "N/A"
+        if show_inventory is None: return "N/A" , "N/A"
 
+        inventory_dict = {
+            "Name": "N/A",
+            "PID": "N/A",
+            "SN": "N/A"
+        }
         inventory_list = []
+        inventory_dict_list = []
+        
         inventory_pattern = re.compile(r"NAME:\s+\"(.+?)\",\s+(.+?)\nPID:\s+(.+?),(.+?)SN:\s+(.+?)\n")
         try:
             inventory_matches = inventory_pattern.findall(show_inventory)
         except AttributeError:
-            print(f"    WARN: MISSING INVENTORY INFO")
-            return "N/A"
+            logging.warning(f"MISSING INVENTORY INFO")
+            return "N/A", "N/A"
 
         for inventory in inventory_matches:
             for item in inventory:
                 if item == "Chassis":
                     SERIAL_NUMBER_LIST.append(inventory[4].strip())
+                    inventory_dict = inventory_dict.copy()
+                    inventory_dict["Name"] = inventory[0]
+                    inventory_dict["PID"] = inventory[2].strip()
+                    inventory_dict["SN"] = inventory[4].strip()
+
+                    inventory_dict_list.append(inventory_dict)
                     inventory_list.append(f"Name: {inventory[0]}, PID: {inventory[2].strip()}, SN: {inventory[4].strip()}")
-        inventory_list = "\n".join(inventory_list)
+        inventory_str = "\n".join(inventory_list)
+
+        if inventory_str == "":
+            inventory_str = "N/A, show inventory found but no matching inventory info"
         
-        return inventory_list
+        return inventory_str, inventory_dict_list
     
     def extract_ip_address_info(self, running_config, hostname):
         ip_address_pattern_file = re.compile(r"(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})")
@@ -286,24 +317,25 @@ Inventory Information:
         ip_address = ip_address_pattern_file.search(filename)
         
         if ip_address:
-            return f"{ip_address.group(1)} (from file name)"
+            return f"{ip_address.group(1)} (from file name)", ip_address.group(1)
         else:
             try:
                 authentication_info = authentication_info_pattern.search(running_config).group(0)
                 return f"\nNO IP ADDRESS, SHOW AUTHENTICATION INFO:\n{'-.'*16}\n{authentication_info}{'-.'*16}"
-            except AttributeError or TypeError:
-                print(f"    WARN: MISSING IP ADDRESS")
-                return "N/A"
-            except:
-                return "N/A"
+            except (AttributeError, TypeError):
+                logging.warning(f"MISSING IP ADDRESS IN FILE NAME AND CONFIG")
+                return "N/A", "N/A"
             
-
     def extract_info(self, pattern, file_data, error_message):
         try:
-            info = pattern.search(file_data).group(1)
-        except AttributeError:
+            info = pattern.findall(file_data)
+            if info and len(info) > 1:
+                info = "\n".join(info)
+            else:
+                info = info[0]
+        except (AttributeError, IndexError):
             info = None
-            print(f"    ERROR: {error_message} IN FILE")
+            logging.error(f"{error_message} IN FILE")
 
             # for debugging
             # traceback.print_exc()
@@ -321,35 +353,49 @@ Inventory Information:
         # Write the data to a CSV file
         with open(f"{NXOS_SWITCH_CSV_FILE_NAME}", 'a', newline='') as csv_file:
             writer = csv.writer(csv_file)
-                        
-            writer.writerow(values)
+            if csv_dict["Inventory Information"] != "N/A":
+                for inventory_dict in csv_dict["Inventory Information"]:
+                    values = csv_dict.values()
+                    values = list(values)
+                    values.pop(-1) # remove inventory information from values
+
+                    # create a new key for values
+                    values.append(inventory_dict["Name"])
+                    values.append(inventory_dict["PID"])
+                    values.append(inventory_dict["SN"])
+
+                    writer.writerow(values)
+            else:
+                writer.writerow(values)
 
 
 class Catalyst_Switch:
     def __init__(self, data):
-        print(f"IOS Switch: {file}")
-
-        device_inventory_list = []
 
         # All regular expressions here
+        show_tech_match = re.search(r"#sh(?:ow)? tech", data)
         putty_timestamp_pattern = re.compile(r"(?:PuTTY|MobaXterm) log (\d{4}\.\d{2}.\d{2} \d{2}:\d{2}:\d{2})")
-        # require show tech to be run
-        show_version_pattern = re.compile(r"-\sshow version(.+?)\n\n\n\-{4,}", re.DOTALL)
-        running_config_pattern = re.compile(r"-\sshow running-config(.+?)\n\-{4,}", re.DOTALL)
-        cisco_timestamp_pattern = re.compile(r"-\sshow clock(.+?)\n\-{4,}", re.DOTALL)
-        cpu_usage_pattern = re.compile(r"-\sshow process cpu(.+?)\n\n\-{4,}", re.DOTALL)
-        memory_usage_pattern = re.compile(r"-\sshow process memory(.+?)\n\-{4,}", re.DOTALL)
-        file_systems_pattern = re.compile(r"-\sshow file systems(.+?)\n\n\-{4,}", re.DOTALL)
-        pnp_stack_pattern = re.compile(r"-\sshow inventory(.+?)\n\n\-{4,}", re.DOTALL)
         directory_pattern = re.compile(r"\#dir(.+?)\#", re.DOTALL)
 
-        # show_version_pattern = re.compile(r"#show ver(.+?)#", re.DOTALL)
-        # running_config_pattern = re.compile(r"#show run(.+?)#", re.DOTALL)
-        # cisco_timestamp_pattern = re.compile(r"#show clock(.+?)#", re.DOTALL)
-        # cpu_usage_pattern = re.compile(r"#show process cpu(.+?)#", re.DOTALL)
-        # memory_usage_pattern = re.compile(r"#show process memory(.+?)#", re.DOTALL)
-        # file_systems_pattern = re.compile(r"#show file systems(.+?)#", re.DOTALL)
-        # pnp_stack_pattern = re.compile(r"#show inventory(.+?)#", re.DOTALL)
+        if show_tech_match:
+            # require show tech to be run
+            show_version_pattern = re.compile(r"-\sshow version(.+?)\n\n\n\-{4,}", re.DOTALL)
+            running_config_pattern = re.compile(r"-\sshow running-config(.+?)\n\-{4,}", re.DOTALL)
+            cisco_timestamp_pattern = re.compile(r"-\sshow clock(.+?)\n\-{4,}", re.DOTALL)
+            cpu_usage_pattern = re.compile(r"-\sshow process cpu(.+?)\n\n\-{4,}", re.DOTALL)
+            memory_usage_pattern = re.compile(r"-\sshow process memory(.+?)\n\-{4,}", re.DOTALL)
+            file_systems_pattern = re.compile(r"-\sshow file systems(.+?)\n\n\-{4,}", re.DOTALL)
+            pnp_stack_pattern = re.compile(r"-\sshow inventory(.+?)\n\n\-{4,}", re.DOTALL)
+        else:
+            show_version_pattern = re.compile(r"#sh(?:ow)? ver(?:sion)?(.+?)#", re.DOTALL)
+            running_config_pattern = re.compile(r"#sh(?:ow)? run(?:nning)?(.+?)#", re.DOTALL)
+            cisco_timestamp_pattern = re.compile(r"#sh(?:ow)? clock(.+?)#", re.DOTALL)
+            cpu_usage_pattern = re.compile(r"#sh(?:ow)? process cpu(.+?)#", re.DOTALL)
+            memory_usage_pattern = re.compile(r"#sh(?:ow)? process memory(.+?)#", re.DOTALL)
+            file_systems_pattern = re.compile(r"#sh(?:ow)? file system(?:s)?(.+?)#", re.DOTALL)
+            pnp_stack_pattern = re.compile(r"#sh(?:ow)? inv(?:entory)?(.+?)#", re.DOTALL)
+        
+        logging.info(f" IOS Switch : {file} (show tech)" if show_tech_match else f" IOS Switch : {file}")
 
         # Extract information from the file
         running_config = self.extract_info(running_config_pattern, data, "No `show running config` command")
@@ -363,9 +409,8 @@ class Catalyst_Switch:
         putty_datetime_info = self.extract_info(putty_timestamp_pattern, data, "No `PuTTY log timestamp` in file")
         pnp_stack_info = self.extract_info(pnp_stack_pattern, data, "No `show inventory` command")
 
-        # Parse information from the file
         hostname = self.get_hostname(running_config)
-        ip_address_info, ip_address = self.extract_ip_address_info(running_config, hostname) if running_config else "N/A no running config"
+        ip_address_info, ip_address = self.extract_ip_address_info(running_config, hostname)
         model_number, serial_number, uptime, software_version = self.extract_version_info(show_version_info)
         
         total_memory, used_memory = self.extract_memory_info(memory_usage_info)
@@ -380,7 +425,7 @@ class Catalyst_Switch:
 
         cpu_5min, cpu_1min, cpu_5sec = self.extract_cpu_info(cpu_usage_info)
         cisco_datetime, putty_datetime = self.compare_clocks(putty_datetime_info, cisco_datatime_info)
-        inventory_info, inventory_dict_list = self.extract_inventory_info(pnp_stack_info, device_inventory_list)
+        inventory_info, inventory_dict_list = self.extract_inventory_info(pnp_stack_info)
 
         # Generate report format
         report_format = f"""=~=~=~=~=~=~=~=~=~=~=~==~=~=~=~=~=~=~=~=~=~=~=
@@ -451,7 +496,7 @@ Inventory Information:
             hostname = hostname_pattern.search(running_config).group(1)
         except AttributeError:
             hostname = "N/A"
-            print(f"    WARN: MISSING HOSTNAME")
+            logging.warning(f"MISSING HOSTNAME IN CONFIG")
 
         return hostname
 
@@ -459,17 +504,27 @@ Inventory Information:
         if putty_timestamp is None or cisco_timestamp is None: return "N/A", "N/A"
 
         # Initialize variables/compile regex patterns here
-        cisco_pattern = re.compile(r"(\d{2}:\d{2}:\d{2}.\d{3} (\w{3}) \w{3} \w{3} \d{1,2} \d{4})")
-        
-        cisco_time_str = cisco_pattern.search(cisco_timestamp)
-        cisco_tz = cisco_time_str.group(2)
-        cisco_format = f'%H:%M:%S.%f {cisco_tz} %a %b %d %Y'
-        
-        # Convert Cisco timestamp and Putty timestamp to datetime objects
-        cisco_datetime = f"{datetime.strptime(cisco_time_str.group(1), cisco_format)} {cisco_tz}"
-        putty_datetime = datetime.strptime(putty_timestamp, '%Y.%m.%d %H:%M:%S')
+        cisco_time_pattern = re.compile(r"(\d{2}:\d{2}:\d{2}.\d{3} (\w{3}) \w{3} \w{3} \d{1,2} \d{4})")
 
-        return cisco_datetime, putty_datetime
+        cisco_time_match = cisco_time_pattern.search(cisco_timestamp)
+        if not cisco_time_match:
+            logging.warning(f"MISSING CISCO TIMESTAMP IN CONFIG")
+            return "N/A", datetime.strptime(putty_timestamp, '%Y.%m.%d %H:%M:%S')
+
+        cisco_time_str = cisco_time_match.group(1)
+        try:
+            cisco_tz_match = cisco_time_match.group(2)
+            cisco_tz = cisco_tz_match if cisco_tz_match else "N/A"
+            cisco_format = f'%H:%M:%S.%f {cisco_tz} %a %b %d %Y'
+
+            # Convert Cisco timestamp and Putty timestamp to datetime objects
+            cisco_datetime = f"{datetime.strptime(cisco_time_str, cisco_format)} {cisco_tz}"
+            putty_datetime = datetime.strptime(putty_timestamp, '%Y.%m.%d %H:%M:%S')
+
+            return cisco_datetime, putty_datetime
+        except ValueError:
+            logging.warning(f"MISSING TIMEZONE IN CONFIG")
+            return "N/A", "N/A"
 
     def extract_version_info(self, show_version_output):
         if show_version_output is None: return "N/A", "N/A", "N/A", "N/A"
@@ -486,36 +541,41 @@ Inventory Information:
         uptime = uptime_pattern.search(show_version_output)
         software_version = software_version_pattern.search(show_version_output)
 
-        if not model_number:
+        if not model_number: # Core Switch
             model_number_pattern = re.compile(r"License\sInformation\sfor\s\'(.*?)\'\n")
             model_number = model_number_pattern.search(show_version_output)
+            logging.warning(f"MISSING MODEL NUMBER IN `show version`") if not model_number else None
 
         if model_number:
             model_number = model_number.group(1)
         else:
-            print(f"    WARN: MISSING MODEL NUMBER IN FILE [{file}]")
+            logging.warning(f"MISSING MODEL NUMBER IN `show version`")
 
-        if not serial_number:
+        if not serial_number: # Core Switch
             serial_number_pattern = re.compile(r"Processor\s[Bb]oard\sID\s(.*?)\n")
             serial_number = serial_number_pattern.search(show_version_output)
+            logging.warning(f"MISSING SERIAL NUMBER IN `show version`") if not serial_number else None
 
         if serial_number:
             serial_number = serial_number.group(1)
             SERIAL_NUMBER_LIST.append(serial_number)
         else:
-            print(f"    WARN: MISSING SERIAL NUMBER IN FILE [{file}]")
+            logging.warning(f"MISSING SERIAL NUMBER IN `show version`")
 
         if uptime:
             uptime = uptime.group(1)
+        else:
+            logging.warning(f"MISSING UPTIME IN `show version`")
 
-        if not software_version:
+        if not software_version: # Core Switch
             software_version_pattern = re.compile(r"ROM:\s(.*?)\n")
             software_version = software_version_pattern.search(show_version_output)
+            logging.warning(f"MISSING SOFTWARE VERSION IN `show version`") if not software_version else None
 
         if software_version:
             software_version = software_version.group(1)
         else:
-            print(f"    WARN: MISSING SOFTWARE VERSION IN FILE [{file}]")
+            logging.warning(f"MISSING SOFTWARE VERSION IN `show version`")
 
         return model_number, serial_number, uptime, software_version
     
@@ -530,27 +590,26 @@ Inventory Information:
 
             total_memory = int(memory_usage_match[1])
             used_memory = int(memory_usage_match[2])
-            free_memory = int(memory_usage_match[3])
+            # free_memory = int(memory_usage_match[3])
         except AttributeError:
-            print(f"    WARN: MISSING MEMORY INFO")
+            logging.warning(f"MISSING MEMORY INFO")
             total_memory = used_memory = "N/A"
         except TypeError:
             # Possible is Core Switch, use second pattern
             if memory_usage_match[4] is not None:
                 total_memory = int(memory_usage_match[4])*1000
                 used_memory = int(memory_usage_match[5])*1000
-                free_memory = int(memory_usage_match[6])*1000
+                # free_memory = int(memory_usage_match[6])*1000
             else:
                 total_memory = used_memory = "N/A"
-                print(f"    WARN: MISSING MEMORY INFO")
+                logging.warning(f"MISSING MEMORY INFO")
 
       
         return total_memory, used_memory
     
     def extract_disk_info(self, disk_usage):
         if disk_usage is None: return "N/A", "N/A", 'N/A'
-
-        # Initialize variables/compile regex patterns here
+        
         disk_usage_pattern = re.compile(r"\*\s+(\d+)\s+(\d+)\s+(\w+)")
 
         try:
@@ -559,9 +618,8 @@ Inventory Information:
             total_memory = int(disk_usage_match[1])
             used_memory = int(disk_usage_match[2])
             disk_type = disk_usage_match[3]
-
-        except TypeError or AttributeError:
-            print(f"    WARN: MISSING DISK INFO")
+        except (TypeError, AttributeError):
+            logging.warning(f"MISSING DISK INFO")
             total_memory = used_memory = disk_type = "N/A"
         
         return total_memory, used_memory, disk_type
@@ -575,9 +633,8 @@ Inventory Information:
 
             total_memory = int(disk_usage_match[1])
             used_memory = int(disk_usage_match[2])
-            print(disk_usage_match[1])
-        except TypeError or AttributeError:
-            print(f"    WARN: MISSING DISK INFO")
+        except (TypeError, AttributeError):
+            logging.warning(f"MISSING DISK INFO")
             total_memory = used_memory = "N/A"
 
         return total_memory, used_memory, "N/A"
@@ -596,11 +653,11 @@ Inventory Information:
             cpu_5sec = cpu_5sec_pattern.search(cpu_usage).group(1)
         except AttributeError:
             cpu_5min = cpu_1min = cpu_5sec = "N/A"
-            print(f"    WARN: MISSING CPU USAGE INFO")
+            logging.warning(f"MISSING CPU USAGE INFO")
 
         return cpu_5min, cpu_1min, cpu_5sec
 
-    def extract_inventory_info(self, show_inventory, inventory_dict_list):
+    def extract_inventory_info(self, show_inventory):
         if show_inventory is None: return "N/A", "N/A"
 
         inventory_dict = {
@@ -610,14 +667,16 @@ Inventory Information:
         }
 
         inventory_list = []
+        inventory_dict_list = []
+
         inventory_pattern = re.compile(r"NAME:\s+(.+?),\s+(.+?)\nPID:\s+(.+?),(.+?)SN:\s+(.+?)\n")
-        switch_keyworad_pattern = re.compile(r"\"(?:\d{1,2}|Switch\s+\d{1,2}|Switch\d{1,2}\s+System)\"")
+        switch_keyworad_pattern = re.compile(r"\"(?:\d{1,2}|Switch\s+\d{1,2}|Switch\d{1,2}\s+System|Switch\s\d{1,2}\s+Chassis)\"")
         
         try:
             inventory_matches = inventory_pattern.findall(show_inventory)
         except AttributeError:
-            print(f"    WARN: MISSING INVENTORY INFO")
-            return "N/A"
+            logging.warning(f"MISSING INVENTORY INFO")
+            return "N/A", "N/A"
 
         for inventory in inventory_matches:
             for item in inventory:
@@ -631,12 +690,12 @@ Inventory Information:
                     
                     inventory_dict_list.append(inventory_dict)
                     inventory_list.append(f"Name: {inventory[0].replace('"', '')}, PID: {inventory[2].strip()}, SN: {inventory[4].strip()}")
-        inventory_list = "\n".join(inventory_list)
+        inventory_str = "\n".join(inventory_list)
 
-        if inventory_list == "":
-            inventory_list = "N/A, show inventory found but no matching inventory info"
+        if inventory_str == "":
+            inventory_str = "N/A, show inventory found but no matching inventory info"
 
-        return inventory_list, inventory_dict_list
+        return inventory_str, inventory_dict_list
 
     def extract_ip_address_info(self, running_config, hostname):
         """
@@ -661,7 +720,7 @@ Inventory Information:
         
         if ip_address:
             return f"{ip_address.group(1)} (from file name)", ip_address.group(1)
-        else:
+        elif running_config is not None:
             try:
                 # Step 2
                 source_interface_vlan = ssh_source_interface_pattern.search(running_config).group(1)
@@ -674,13 +733,19 @@ Inventory Information:
                 # Step 4
                 ip_address_info = "\n".join(ip_address_pattern.findall(running_config))
                 return f"\nNO SSH SOURCE INTERFACE, SHOW ALL MATCH:\n{'-.'*16}\n{ip_address_info}\n{'-.'*16}\n", 'N/A'
+        else:
+            return "N/A", "N/A"
 
     def extract_info(self, pattern, file_data, error_message):
         try:
-            info = pattern.search(file_data).group(1)
-        except AttributeError:
+            info = pattern.findall(file_data)
+            if info and len(info) > 1:
+                info = "\n".join(info)
+            else:
+                info = info[0]
+        except (AttributeError, IndexError):
             info = None
-            print(f"    ERROR: {error_message} IN FILE")
+            logging.error(f"{error_message} IN FILE")
 
             # for debugging
             # traceback.print_exc()
@@ -691,7 +756,6 @@ Inventory Information:
             f.write(report)
 
     def export_dict_to_csv(self, csv_dict):
-
         # Extract the keys and values from the dictionary
         keys = EXPORT_CSV_DICT.keys()
         values = csv_dict.values()
@@ -716,9 +780,19 @@ Inventory Information:
            
             # writer.writerow(values)
            
-
+class CustomFormatter(logging.Formatter):
+    def format(self, record):
+        if record.levelno == logging.ERROR:
+            self._style = logging.PercentStyle('    %(levelname)s: %(message)s')
+        elif record.levelno == logging.WARNING:
+            self._style = logging.PercentStyle('    %(levelname)s: %(message)s')
+        else:
+            self._style = logging.PercentStyle('%(message)s')
+        return super().format(record)
 
 if __name__ == "__main__":
+    # create output folder if not exist
+    os.makedirs(OUTPUT_FOLDER, exist_ok=True)
     # get current path
     files = os.listdir()
     os.remove(f"{IOS_SWITCH_FILE_NAME}") if os.path.exists(f"{IOS_SWITCH_FILE_NAME}") else None
@@ -745,10 +819,22 @@ if __name__ == "__main__":
     ios_switch_pattern = re.compile(r"[Cc]isco IOS")
     unicode_escape_pattern = r'\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])'
 
+    # Create a file handler with the custom formatter
+    file_handler = logging.FileHandler(LOG_FILE_NAME, mode='w')
+    file_handler.setLevel(logging.DEBUG)  # Set the level as needed
+    file_handler.setFormatter(CustomFormatter())
+
+    # Configure logging to output to console
+    console = logging.StreamHandler()
+    console.setLevel(logging.DEBUG)  # Set the level as needed
+    console.setFormatter(CustomFormatter())
+
+    # Add handlers to the root logger
+    logging.basicConfig(level=logging.DEBUG, handlers=[file_handler, console])
+    logging.getLogger('').addHandler(console)
 
     for file in files:
         # create export csv dictionary for each file
-
         try:
             with open(file, "r") as f:
                 data = f.read()
@@ -762,16 +848,16 @@ if __name__ == "__main__":
                 else:
                     unknown_file.append(file)
         except UnicodeDecodeError:
-            print(f"    ERROR: UNICODE DECODE ERROR IN FILE [{file}]")
+            logging.error(f"UNICODE DECODE ERROR IN FILE [{file}]")
             unknown_file.append(file)
         
-
-
-    print("\n"+"-"*50)
+    logging.debug("\n"+"-"*50)
     for file in unknown_file:
-        print(f"ERROR: Unknown switch type in file [{file}]")
-    print("-"*50+"")
-    print(f"Total file: {total_file}, Processed file: {len(processed_file)}, Unknown file: {len(unknown_file)}\n")
+        logging.debug(f"Unknown Switch or File [{file}]")
+    logging.debug("-"*50)
+    logging.debug(f"Total file: {total_file}, Processed file: {len(processed_file)}, Unknown file: {len(unknown_file)}\n")
+    logging.shutdown()
+
     # for serial_number in SERIAL_NUMBER_LIST:
     #     print(serial_number)
     input("Press Enter to exit...")
