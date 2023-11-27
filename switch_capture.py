@@ -43,7 +43,7 @@ class Nexus_Switch:
         putty_timestamp_pattern = re.compile(r"(?:PuTTY|MobaXterm) log (\d{4}\.\d{2}.\d{2} \d{2}:\d{2}:\d{2})")
         running_config_pattern = re.compile(r"\#\sshow run(.+?)\#", re.DOTALL)
         show_version_pattern = re.compile(r"\#\sshow ver(.+?)\#", re.DOTALL)
-        show_sysresources_pattern = re.compile(r"#\s?sh(?:ow)?\s?sys(?:tem)?\sres(?:ource|ources)?\s\n+Load(.+?)\#", re.DOTALL)
+        show_sysresources_pattern = re.compile(r"#\s?sh(?:ow)?\s?sys(?:tem)?\sres(?:ource|ources)?(.+?)\#", re.DOTALL)
         show_processcpu_pattern = re.compile(r"\#\sshow process cpu\s\n+PID(.+?)\#", re.DOTALL)
         show_inventory_pattern = re.compile(r"\#\sshow inv(.+?)\#", re.DOTALL)
         directory_pattern = re.compile(r"\#\sdir(.+?)\#", re.DOTALL)
@@ -255,20 +255,24 @@ Inventory Information:
         cpu_5sec_pattern = re.compile(r"five seconds: (.+?);")
         cpu_utlization_pattern = re.compile(r"(\d+.\d+)% user,\s+(\d+.\d+)% kernel,\s+(\d+.\d+)% idle")
 
-        try:
-            cpu_5min = cpu_5min_pattern.search(show_sysresources).group(1)
-            cpu_1min = cpu_1min_pattern.search(show_sysresources).group(1)
-            cpu_5sec = cpu_5sec_pattern.search(show_sysresources).group(1)
-        except:
-            cpu_5min = cpu_1min = cpu_5sec = cpu_utlization = "N/A"
+        cpu_5min = cpu_5min_pattern.search(show_sysresources)
+        cpu_1min = cpu_1min_pattern.search(show_sysresources)
+        cpu_5sec = cpu_5sec_pattern.search(show_sysresources)
+        cpu_utlization = cpu_utlization_pattern.search(show_sysresources)
+        
+        if cpu_5min and cpu_1min and cpu_5sec:
+            cpu_5min = cpu_5min.group(1)
+            cpu_1min = cpu_1min.group(1)
+            cpu_5sec = cpu_5sec.group(1)
+        elif cpu_utlization:
+            cpu_utlization = cpu_utlization.group(3)
+            cpu_utlization = round(100 - float(cpu_utlization), 2)
+            logging.warning(f"MISSING CPU 5min, 1min, 5sec, USING CPU UTILIZATION INSTEAD")
+        else:
+            cpu_5min = cpu_1min = cpu_5sec = "N/A"
+            cpu_utlization = "N/A"
             logging.warning(f"MISSING CPU USAGE INFO")
 
-        try:
-            cpu_utlization = cpu_utlization_pattern.search(show_sysresources).group(3)
-            cpu_utlization = round(100 - float(cpu_utlization), 2)
-        except:
-            cpu_utlization = "N/A"
-            logging.warning(f"MISSING CPU UILIZATION")
 
         return cpu_5min, cpu_1min, cpu_5sec, cpu_utlization
 
@@ -388,7 +392,7 @@ class Catalyst_Switch:
             pnp_stack_pattern = re.compile(r"-\sshow inventory(.+?)\n\n\-{4,}", re.DOTALL)
         else:
             show_version_pattern = re.compile(r"#sh(?:ow)? ver(?:sion)?(.+?)#", re.DOTALL)
-            running_config_pattern = re.compile(r"#sh(?:ow)? run(?:nning)?(.+?)#", re.DOTALL)
+            running_config_pattern = re.compile(r"#sh(?:ow)? run(?:ning)?(.+?)#", re.DOTALL)
             cisco_timestamp_pattern = re.compile(r"#sh(?:ow)? clock(.+?)#", re.DOTALL)
             cpu_usage_pattern = re.compile(r"#sh(?:ow)? process cpu(.+?)#", re.DOTALL)
             memory_usage_pattern = re.compile(r"#sh(?:ow)? process memory(.+?)#", re.DOTALL)
@@ -669,8 +673,8 @@ Inventory Information:
         inventory_list = []
         inventory_dict_list = []
 
-        inventory_pattern = re.compile(r"NAME:\s+(.+?),\s+(.+?)\nPID:\s+(.+?),(.+?)SN:\s+(.+?)\n")
-        switch_keyworad_pattern = re.compile(r"\"(?:\d{1,2}|Switch\s+\d{1,2}|Switch\d{1,2}\s+System|Switch\s\d{1,2}\s+Chassis)\"")
+        inventory_pattern = re.compile(r"NAME:\s+(.+?),\s+(.+?)\nPID:\s+(.+?),(.+?)SN:\s(.+?)\n")
+        switch_keyworad_pattern = re.compile(r"\"(?:\d{1,2}|Switch\s+\d{1,2}|Switch\d{0,2}\s+System|Switch\s\d{1,2}\s+Chassis)\"")
         
         try:
             inventory_matches = inventory_pattern.findall(show_inventory)
@@ -682,18 +686,25 @@ Inventory Information:
             for item in inventory:
                 switch = switch_keyworad_pattern.search(item)
                 if switch:
-                    SERIAL_NUMBER_LIST.append(inventory[4].strip())
-                    inventory_dict = inventory_dict.copy()
-                    inventory_dict["Name"] = inventory[0].replace('"', '')
-                    inventory_dict["PID"] = inventory[2].strip()
-                    inventory_dict["SN"] = inventory[4].strip()
-                    
-                    inventory_dict_list.append(inventory_dict)
-                    inventory_list.append(f"Name: {inventory[0].replace('"', '')}, PID: {inventory[2].strip()}, SN: {inventory[4].strip()}")
+                    # if no serial number, 
+                    # means it is provisioned switch, so will just exclude it
+                    if inventory[4].strip() != "": 
+                        SERIAL_NUMBER_LIST.append(inventory[4].strip())
+                        inventory_dict = inventory_dict.copy()
+                        inventory_dict["Name"] = inventory[0].replace('"', '')
+                        inventory_dict["PID"] = inventory[2].strip()
+                        inventory_dict["SN"] = inventory[4].strip()
+                        
+                        
+                        inventory_dict_list.append(inventory_dict)
+                        inventory_list.append(f"Name: {inventory[0].replace('"', '')}, PID: {inventory[2].strip()}, SN: {inventory[4].strip()}")
         inventory_str = "\n".join(inventory_list)
 
         if inventory_str == "":
+            logging.warning(f"MISSING INVENTORY INFO")
             inventory_str = "N/A, show inventory found but no matching inventory info"
+
+            return inventory_str, "N/A"
 
         return inventory_str, inventory_dict_list
 
@@ -728,7 +739,7 @@ Inventory Information:
                 # Step 3
                 vlan_interface_match = re.search(r"\!\ninterface Vlan" + source_interface_vlan + r"\n(.+?)\!\n", running_config, re.DOTALL).group(1)
                 ip_address = re.search(ip_address_pattern, vlan_interface_match).group(1)
-                return f"{ip_address} (from VLAN {source_interface_vlan})", ip_address
+                return f"{ip_address} (from VLAN {source_interface_vlan})", re.search(ip_address_pattern_file, vlan_interface_match).group(1)
             except AttributeError:
                 # Step 4
                 ip_address_info = "\n".join(ip_address_pattern.findall(running_config))
@@ -858,6 +869,7 @@ if __name__ == "__main__":
     logging.debug(f"Total file: {total_file}, Processed file: {len(processed_file)}, Unknown file: {len(unknown_file)}\n")
     logging.shutdown()
 
+    # SERIAL_NUMBER_LIST = list(dict.fromkeys(SERIAL_NUMBER_LIST))
     # for serial_number in SERIAL_NUMBER_LIST:
     #     print(serial_number)
     input("Press Enter to exit...")
