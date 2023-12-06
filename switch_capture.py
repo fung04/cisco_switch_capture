@@ -38,16 +38,30 @@ EXPORT_CSV_DICT = {
 
 class Nexus_Switch:
     def __init__(self, data):
-        logging.info(f"NXOS Switch : {file}")
-        # All regular expressions here
-        putty_timestamp_pattern = re.compile(r"(?:PuTTY|MobaXterm) log (\d{4}\.\d{2}.\d{2} \d{2}:\d{2}:\d{2})")
-        running_config_pattern = re.compile(r"\#\sshow run(.+?)\#", re.DOTALL)
-        show_version_pattern = re.compile(r"\#\sshow ver(.+?)\#", re.DOTALL)
-        show_sysresources_pattern = re.compile(r"#\s?sh(?:ow)?\s?sys(?:tem)?\sres(?:ource|ources)?(.+?)\#", re.DOTALL)
-        show_processcpu_pattern = re.compile(r"\#\sshow process cpu\s\n+PID(.+?)\#", re.DOTALL)
-        show_inventory_pattern = re.compile(r"\#\sshow inv(.+?)\#", re.DOTALL)
-        directory_pattern = re.compile(r"\#\sdir(.+?)\#", re.DOTALL)
 
+        # All regular expressions here
+        show_tech_match = re.search(r"#\s+sh(?:ow)? tech", data)
+        putty_timestamp_pattern = re.compile(r"(?:PuTTY|MobaXterm) log (\d{4}\.\d{2}.\d{2} \d{2}:\d{2}:\d{2})")
+
+        if show_tech_match:
+            # running_config_pattern = re.compile(r"`show running`(.+?)`", re.DOTALL)
+            # show_version_pattern = re.compile(r"`show version`(.+?)`", re.DOTALL)
+            # show_sysresources_pattern = re.compile(r"`show system resources module all`(.+?)`", re.DOTALL)
+            # show_processcpu_pattern = re.compile(r"\#\sshow process cpu\s\n+PID(.+?)\#", re.DOTALL)
+            # show_inventory_pattern = re.compile(r"\#\sshow inv(.+?)\#", re.DOTALL)
+            # directory_pattern = re.compile(r"\#\sdir(.+?)\#", re.DOTALL)
+
+            pass
+        else:
+            running_config_pattern = re.compile(r"\#\sshow run(.+?)\#", re.DOTALL)
+            show_version_pattern = re.compile(r"\#\sshow ver(.+?)\#", re.DOTALL)
+            show_sysresources_pattern = re.compile(r"#\s?sh(?:ow)?\s?sys(?:tem)?\sres(?:ource|ources)?(.+?)\#", re.DOTALL)
+            show_processcpu_pattern = re.compile(r"\#\sshow process cpu\s\n+PID(.+?)\#", re.DOTALL)
+            show_inventory_pattern = re.compile(r"\#\sshow inv(.+?)\#", re.DOTALL)
+            directory_pattern = re.compile(r"\#\sdir(.+?)\#", re.DOTALL)
+
+        logging.info(f"NXOS Switch : {file} (show tech)" if show_tech_match else f"NXOS Switch : {file}")
+        
         running_config = self.extract_info(running_config_pattern, data, "No `show running config` command")
         show_processcpu = self.extract_info(show_processcpu_pattern, data, "No `show process cpu` command")
         show_version = self.extract_info(show_version_pattern, data, "No `show version` command")
@@ -308,7 +322,10 @@ Inventory Information:
         inventory_str = "\n".join(inventory_list)
 
         if inventory_str == "":
+            logging.warning(f"MISSING INVENTORY INFO")
             inventory_str = "N/A, show inventory found but no matching inventory info"
+
+            return inventory_str, "N/A"
         
         return inventory_str, inventory_dict_list
     
@@ -523,6 +540,8 @@ Inventory Information:
 
             # Convert Cisco timestamp and Putty timestamp to datetime objects
             cisco_datetime = f"{datetime.strptime(cisco_time_str, cisco_format)} {cisco_tz}"
+            
+            cisco_datetime_obj = datetime.strptime(cisco_time_str, cisco_format)
             putty_datetime = datetime.strptime(putty_timestamp, '%Y.%m.%d %H:%M:%S')
 
             return cisco_datetime, putty_datetime
@@ -600,11 +619,11 @@ Inventory Information:
             total_memory = used_memory = "N/A"
         except TypeError:
             # Possible is Core Switch, use second pattern
-            if memory_usage_match[4] is not None:
+            try:
                 total_memory = int(memory_usage_match[4])*1000
                 used_memory = int(memory_usage_match[5])*1000
                 # free_memory = int(memory_usage_match[6])*1000
-            else:
+            except TypeError:
                 total_memory = used_memory = "N/A"
                 logging.warning(f"MISSING MEMORY INFO")
 
@@ -701,6 +720,7 @@ Inventory Information:
         inventory_str = "\n".join(inventory_list)
 
         if inventory_str == "":
+            # the condition that no inventory info match, but show inventory found
             logging.warning(f"MISSING INVENTORY INFO")
             inventory_str = "N/A, show inventory found but no matching inventory info"
 
