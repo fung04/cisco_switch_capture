@@ -38,29 +38,17 @@ EXPORT_CSV_DICT = {
 
 class Nexus_Switch:
     def __init__(self, data):
-
         # All regular expressions here
         show_tech_match = re.search(r"#\s+sh(?:ow)? tech", data)
         putty_timestamp_pattern = re.compile(r"(?:PuTTY|MobaXterm) log (\d{4}\.\d{2}.\d{2} \d{2}:\d{2}:\d{2})")
+        running_config_pattern = re.compile(r"\#\sshow run(.+?)\#", re.DOTALL)
+        show_version_pattern = re.compile(r"\#\sshow ver(.+?)\#", re.DOTALL)
+        show_sysresources_pattern = re.compile(r"#\s?sh(?:ow)?\s?sys(?:tem)?\sres(?:ource|ources)?(.+?)\#", re.DOTALL)
+        show_processcpu_pattern = re.compile(r"\#\sshow process cpu\s\n+PID(.+?)\#", re.DOTALL)
+        show_inventory_pattern = re.compile(r"\#\sshow inv(.+?)\#", re.DOTALL)
+        directory_pattern = re.compile(r"\#\sdir(.+?)\#", re.DOTALL)
 
-        if show_tech_match:
-            # running_config_pattern = re.compile(r"`show running`(.+?)`", re.DOTALL)
-            # show_version_pattern = re.compile(r"`show version`(.+?)`", re.DOTALL)
-            # show_sysresources_pattern = re.compile(r"`show system resources module all`(.+?)`", re.DOTALL)
-            # show_processcpu_pattern = re.compile(r"\#\sshow process cpu\s\n+PID(.+?)\#", re.DOTALL)
-            # show_inventory_pattern = re.compile(r"\#\sshow inv(.+?)\#", re.DOTALL)
-            # directory_pattern = re.compile(r"\#\sdir(.+?)\#", re.DOTALL)
-
-            pass
-        else:
-            running_config_pattern = re.compile(r"\#\sshow run(.+?)\#", re.DOTALL)
-            show_version_pattern = re.compile(r"\#\sshow ver(.+?)\#", re.DOTALL)
-            show_sysresources_pattern = re.compile(r"#\s?sh(?:ow)?\s?sys(?:tem)?\sres(?:ource|ources)?(.+?)\#", re.DOTALL)
-            show_processcpu_pattern = re.compile(r"\#\sshow process cpu\s\n+PID(.+?)\#", re.DOTALL)
-            show_inventory_pattern = re.compile(r"\#\sshow inv(.+?)\#", re.DOTALL)
-            directory_pattern = re.compile(r"\#\sdir(.+?)\#", re.DOTALL)
-
-        logging.info(f"NXOS Switch : {file} (show tech)" if show_tech_match else f"NXOS Switch : {file}")
+        logging.info(f" NXOS Switch : {file} (show tech)" if show_tech_match else f" NXOS Switch : {file}")
         
         running_config = self.extract_info(running_config_pattern, data, "No `show running config` command")
         show_processcpu = self.extract_info(show_processcpu_pattern, data, "No `show process cpu` command")
@@ -148,7 +136,6 @@ Inventory Information:
         CSV_DICT["Inventory Information"] = inventory_dict_list
         self.export_dict_to_csv(CSV_DICT)
 
-
     def get_hostname(self, running_config):
         if running_config is None: return "N/A"
 
@@ -226,19 +213,20 @@ Inventory Information:
         return model_number, serial_number, uptime, software_version
 
     def extract_memory_info(self, show_sysresources):
-        # print(f'show_sysresources: {show_sysresources}')
         if show_sysresources is None: return "N/A", "N/A"
-        # Initialize variables/compile regex patterns here
+        
         memory_usage_pattern = re.compile(r"Memory usage:\s+(\d+)[Kk] total,\s+(\d+)[Kk] used,\s+(\d+)[Kk] free\n")
-        memory_usage_match = memory_usage_pattern.search(show_sysresources)
         try:
             memory_usage_match = memory_usage_pattern.search(show_sysresources)
 
             total_memory = int(memory_usage_match[1])
             used_memory = int(memory_usage_match[2])
             # free_memory = int(memory_usage_match[3])
-        except TypeError or AttributeError:
+        except AttributeError:
             logging.warning(f"MISSING MEMORY INFO")
+            total_memory = used_memory = "N/A"
+        except TypeError:
+            logging.warning(f"MEMORY INFO FOUND, BUT NOT INTEGER TYPE")
             total_memory = used_memory = "N/A"
 
         return total_memory, used_memory
@@ -247,46 +235,59 @@ Inventory Information:
         if dir_info is None: return "N/A", "N/A"
 
         disk_usage_pattern = re.compile(r"(\d+)\sbytes\sused\n\s*(\d+)\sbytes\sfree\n\s*(\d+)\sbytes\stotal")
-
         try:
             disk_usage_match = disk_usage_pattern.search(dir_info)
 
             total_memory = int(disk_usage_match[3])
             used_memory = int(disk_usage_match[1])
             # free_memory = int(disk_usage_match[2])
-        except (TypeError, AttributeError):
+        except AttributeError:
             logging.warning(f"MISSING DISK INFO")
             total_memory = used_memory = "N/A", "N/A"
+        except TypeError:
+            logging.warning(f"DISK INFO FOUND, BUT NOT INTEGER TYPE")
+            total_memory = used_memory = "N/A", "N/A"
+            
 
         return total_memory, used_memory
     
     def extract_cpu_info(self, show_sysresources):
         if show_sysresources is None: return "N/A", "N/A", "N/A", "N/A"
-        
-        # Initialize variables/compile regex patterns here
-        cpu_5min_pattern = re.compile(r"five minutes: (.+?)\n")
-        cpu_1min_pattern = re.compile(r"one minute: (.+?);")
-        cpu_5sec_pattern = re.compile(r"five seconds: (.+?);")
-        cpu_utlization_pattern = re.compile(r"(\d+.\d+)% user,\s+(\d+.\d+)% kernel,\s+(\d+.\d+)% idle")
+        cpu_5min, cpu_1min, cpu_5sec, cpu_utlization = "N/A", "N/A", "N/A", "N/A"
 
-        cpu_5min = cpu_5min_pattern.search(show_sysresources)
-        cpu_1min = cpu_1min_pattern.search(show_sysresources)
-        cpu_5sec = cpu_5sec_pattern.search(show_sysresources)
-        cpu_utlization = cpu_utlization_pattern.search(show_sysresources)
-        
-        if cpu_5min and cpu_1min and cpu_5sec:
-            cpu_5min = cpu_5min.group(1)
-            cpu_1min = cpu_1min.group(1)
-            cpu_5sec = cpu_5sec.group(1)
-        elif cpu_utlization:
-            cpu_utlization = cpu_utlization.group(3)
-            cpu_utlization = round(100 - float(cpu_utlization), 2)
-            logging.warning(f"MISSING CPU 5min, 1min, 5sec, USING CPU UTILIZATION INSTEAD")
-        else:
-            cpu_5min = cpu_1min = cpu_5sec = "N/A"
-            cpu_utlization = "N/A"
-            logging.warning(f"MISSING CPU USAGE INFO")
+        cpu_usage_pattern = re.compile(
+            r"""
+            (?:
+                five\ seconds:\s(?P<five_sec>\d+%/\d+%);\s
+                one\sminute:\s(?P<one_min>\d+%);\s
+                five\sminutes:\s(?P<five_min>\d+%)
+            |
+                (?P<cputil_user>\d+.\d+)%\ user,\s+
+                (?P<cputil_kernel>\d+.\d+)%\ kernel,\s+
+                (?P<cputil_idle>\d+.\d+)%\ idle
+            )
+            """, re.VERBOSE)
 
+        cpu_usage_matches = cpu_usage_pattern.finditer(show_sysresources)
+
+        for match in cpu_usage_matches:
+            fivesec_1 = match.group("five_sec")
+            onemin_1 = match.group("one_min")
+            fivemin_1 = match.group("five_min")
+            cputil_percent = match.group("cputil_idle")
+
+            cpu_1min = onemin_1 or cpu_1min  # Assign if non-empty
+            cpu_5sec = fivesec_1 or cpu_5sec
+            cpu_5min = fivemin_1 or cpu_5min
+            cpu_utlization = cputil_percent or cpu_utlization
+        
+        cpu_utlization = round(100 - float(cpu_utlization), 2)
+        
+        if cpu_5min and cpu_1min and cpu_5sec == "N/A":
+             logging.warning(f"MISSING CPU 5min, 1min, 5sec")
+
+        if cpu_utlization == "N/A":
+            logging.warning(f"MISSING CPU UTILIZATION INFO")
 
         return cpu_5min, cpu_1min, cpu_5sec, cpu_utlization
 
@@ -350,7 +351,7 @@ Inventory Information:
     def extract_info(self, pattern, file_data, error_message):
         try:
             info = pattern.findall(file_data)
-            if info and len(info) > 1:
+            if info and len(info) > 1: # Condition for multiple matches
                 info = "\n".join(info)
             else:
                 info = info[0]
@@ -832,6 +833,7 @@ if __name__ == "__main__":
     os.remove(f"{NXOS_SWITCH_CSV_FILE_NAME}") if os.path.exists(f"{NXOS_SWITCH_CSV_FILE_NAME}") else None
 
     files = [file for file in os.listdir() if os.path.splitext(file)[1] in TEXT_FILE_EXTENSION]
+    files.sort(key=lambda x: [int(c) if c.isdigit() else c.lower() for c in re.split('([0-9]+)', x)]) # Natural Sort Function
 
     # create csv file header
     with open(f"{IOS_SWITCH_CSV_FILE_NAME}", 'a', newline='') as csv_file:
