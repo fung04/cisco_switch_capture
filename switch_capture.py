@@ -101,7 +101,7 @@ CPU Usage:
 5-minute Average: {cpu_5min}
 1-minute Average: {cpu_1min}
 5-second Average: {cpu_5sec}
-cpu utlization  : {cpu_utlization}%
+Cpu Utlization  : {cpu_utlization}%
 
 Timestamps:
 Cisco Timestamp: {cisco_datetime}
@@ -176,39 +176,30 @@ Inventory Information:
     
     def extract_version_info(self, show_version_output):
         if show_version_output is None: return "N/A", "N/A", "N/A", "N/A"
+        model_number, serial_number, uptime, software_version = "N/A", "N/A", "N/A", "N/A"
+        show_version_pattern = re.compile(r"""
+                     (?:Processor\sBoard\sID (?P<serial_number>.*)|
+                     Kernel\suptime\sis(?P<uptime>.*)|
+                     NXOS:\s(?P<software_version>.*)|
+                     Hardware\n(?P<model_number>.*))""",re.VERBOSE)
 
-        # Initialize variables/compile regex patterns here
-        model_number_pattern = re.compile(r"Hardware\n(.+?)\n")
-        serial_number_pattern = re.compile(r"\s?Processor Board ID\s(.+?)\n")
-        uptime_pattern = re.compile(r"Kernel uptime is\s(.+?)\n")
-        software_version_pattern = re.compile(r"\s?NXOS:\s(.+?)\n")
-        model_number = serial_number = uptime = software_version = "N/A"
+        show_version_matches = show_version_pattern.finditer(show_version_output)
 
-        model_number_match = model_number_pattern.search(show_version_output)
-        serial_number_match = serial_number_pattern.search(show_version_output)
-        uptime_match = uptime_pattern.search(show_version_output)
-        software_version_match = software_version_pattern.search(show_version_output)
+        for match in show_version_matches:
+            model_number = match.group("model_number") or model_number
+            serial_number = match.group("serial_number") or serial_number
+            uptime = match.group("uptime") or uptime
+            software_version = match.group("software_version") or software_version
 
-        if model_number_match:
-            model_number = model_number_match.group(1).strip()
-        else:
+        if model_number == "N/A":
             logging.warning(f"MISSING MODEL NUMBER IN `show version`")
-        
-        if serial_number_match:
-            serial_number = serial_number_match.group(1)
-            SERIAL_NUMBER_LIST.append(serial_number)
-        else:
-            logging.warning(f"MISSING SERIAL NUMBER IN `show version`")
-
-        if uptime_match:
-            uptime = uptime_match.group(1)
-        else:
+        if uptime == "N/A":
             logging.warning(f"MISSING UPTIME IN `show version`")
-        
-        if software_version_match:
-            software_version = software_version_match.group(1)
-        else:
+        if software_version == "N/A":
             logging.warning(f"MISSING SOFTWARE VERSION IN `show version`")
+        SERIAL_NUMBER_LIST.append(serial_number) if serial_number != "N/A" else logging.warning(
+            f"MISSING SERIAL NUMBER IN `show version`")
+
 
         return model_number, serial_number, uptime, software_version
 
@@ -270,11 +261,11 @@ Inventory Information:
 
         cpu_usage_matches = cpu_usage_pattern.finditer(show_sysresources)
 
-        for match in cpu_usage_matches:
-            fivesec_1 = match.group("five_sec")
-            onemin_1 = match.group("one_min")
-            fivemin_1 = match.group("five_min")
-            cputil_percent = match.group("cputil_idle")
+        for cpu_usage in cpu_usage_matches:
+            fivesec_1 = cpu_usage.group("five_sec")
+            onemin_1 = cpu_usage.group("one_min")
+            fivemin_1 = cpu_usage.group("five_min")
+            cputil_percent = cpu_usage.group("cputil_idle")
 
             cpu_1min = onemin_1 or cpu_1min  # Assign if non-empty
             cpu_5sec = fivesec_1 or cpu_5sec
@@ -535,14 +526,13 @@ Inventory Information:
 
         cisco_time_str = cisco_time_match.group(1)
         try:
+            # Get Cisco timezone details
             cisco_tz_match = cisco_time_match.group(2)
             cisco_tz = cisco_tz_match if cisco_tz_match else "N/A"
             cisco_format = f'%H:%M:%S.%f {cisco_tz} %a %b %d %Y'
 
             # Convert Cisco timestamp and Putty timestamp to datetime objects
             cisco_datetime = f"{datetime.strptime(cisco_time_str, cisco_format)} {cisco_tz}"
-            
-            cisco_datetime_obj = datetime.strptime(cisco_time_str, cisco_format)
             putty_datetime = datetime.strptime(putty_timestamp, '%Y.%m.%d %H:%M:%S')
 
             return cisco_datetime, putty_datetime
@@ -694,7 +684,7 @@ Inventory Information:
         inventory_dict_list = []
 
         inventory_pattern = re.compile(r"NAME:\s+(.+?),\s+(.+?)\nPID:\s+(.+?),(.+?)SN:\s(.+?)\n")
-        switch_keyworad_pattern = re.compile(r"\"(?:\d{1,2}|Switch\s+\d{1,2}|Switch\d{0,2}\s+System|Switch\s\d{1,2}\s+Chassis)\"")
+        switch_keyworad_pattern = re.compile(r"\"(?:\d{1,2}|Switch\s+\d{1,2}|Switch\d{0,2}\s+System|Switch\s\d{1,2}\s+Chassis|Chassis)\"")
         
         try:
             inventory_matches = inventory_pattern.findall(show_inventory)
