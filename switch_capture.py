@@ -314,7 +314,7 @@ Inventory Information:
         inventory_str = "\n".join(inventory_list)
 
         if inventory_str == "":
-            logging.warning(f"MISSING INVENTORY INFO")
+            logging.warning(f"INVENTORY INFO FOUND, BUT NO MATCHING INFO")
             inventory_str = "N/A, show inventory found but no matching inventory info"
 
             return inventory_str, "N/A"
@@ -712,7 +712,7 @@ Inventory Information:
 
         if inventory_str == "":
             # the condition that no inventory info match, but show inventory found
-            logging.warning(f"MISSING INVENTORY INFO")
+            logging.warning(f"INVENTORY INFO FOUND, BUT NO MATCHING INFO")
             inventory_str = "N/A, show inventory found but no matching inventory info"
 
             return inventory_str, "N/A"
