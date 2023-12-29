@@ -190,6 +190,11 @@ Inventory Information:
             serial_number = match.group("serial_number") or serial_number
             uptime = match.group("uptime") or uptime
             software_version = match.group("software_version") or software_version
+        
+        uptime = uptime.strip() if uptime != "N/A" else "N/A"
+        software_version = software_version.strip() if software_version != "N/A" else "N/A"
+        model_number = model_number.strip() if model_number != "N/A" else "N/A"
+        serial_number = serial_number.strip() if serial_number != "N/A" else "N/A"
 
         if model_number == "N/A":
             logging.warning(f"MISSING MODEL NUMBER IN `show version`")
