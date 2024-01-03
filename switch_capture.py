@@ -522,7 +522,7 @@ Inventory Information:
         if putty_timestamp is None or cisco_timestamp is None: return "N/A", "N/A"
 
         # Initialize variables/compile regex patterns here
-        cisco_time_pattern = re.compile(r"(\d{2}:\d{2}:\d{2}.\d{3} (\w{3}) \w{3} \w{3} \d{1,2} \d{4})")
+        cisco_time_pattern = re.compile(r"(\d{2}:\d{2}:\d{2}.\d{3} (\w{2,3}) \w{3} \w{3} \d{1,2} \d{4})")
 
         cisco_time_match = cisco_time_pattern.search(cisco_timestamp)
         if not cisco_time_match:
@@ -721,7 +721,7 @@ Inventory Information:
             inventory_str = "N/A, show inventory found but no matching inventory info"
 
             return inventory_str, "N/A"
-
+        
         return inventory_str, inventory_dict_list
 
     def extract_ip_address_info(self, running_config, hostname):
@@ -817,6 +817,21 @@ class CustomFormatter(logging.Formatter):
             self._style = logging.PercentStyle('%(message)s')
         return super().format(record)
 
+def logging_init():
+    # Create a file handler with the custom formatter
+    file_handler = logging.FileHandler(LOG_FILE_NAME, mode='w')
+    file_handler.setLevel(logging.DEBUG)  # Set the level as needed
+    file_handler.setFormatter(CustomFormatter())
+
+    # Configure logging to output to console
+    console = logging.StreamHandler()
+    console.setLevel(logging.DEBUG)  # Set the level as needed
+    console.setFormatter(CustomFormatter())
+
+    # Add handlers to the root logger
+    logging.basicConfig(level=logging.DEBUG, handlers=[file_handler, console])
+    logging.getLogger('').addHandler(console)
+
 if __name__ == "__main__":
     # create output folder if not exist
     os.makedirs(OUTPUT_FOLDER, exist_ok=True)
@@ -846,20 +861,8 @@ if __name__ == "__main__":
     nxos_switch_pattern = re.compile(r"!Command:")
     ios_switch_pattern = re.compile(r"[Cc]isco IOS")
     unicode_escape_pattern = r'\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])'
-
-    # Create a file handler with the custom formatter
-    file_handler = logging.FileHandler(LOG_FILE_NAME, mode='w')
-    file_handler.setLevel(logging.DEBUG)  # Set the level as needed
-    file_handler.setFormatter(CustomFormatter())
-
-    # Configure logging to output to console
-    console = logging.StreamHandler()
-    console.setLevel(logging.DEBUG)  # Set the level as needed
-    console.setFormatter(CustomFormatter())
-
-    # Add handlers to the root logger
-    logging.basicConfig(level=logging.DEBUG, handlers=[file_handler, console])
-    logging.getLogger('').addHandler(console)
+    
+    logging_init()
 
     for file in files:
         # create export csv dictionary for each file
@@ -882,7 +885,7 @@ if __name__ == "__main__":
     logging.debug("\n"+"-"*50)
     for file in unknown_file:
         logging.debug(f"Unknown Switch or File [{file}]")
-    logging.debug("-"*50)
+    logging.debug("-"*50) if len(unknown_file) != 0 else None
     logging.debug(f"Total file: {total_file}, Processed file: {len(processed_file)}, Unknown file: {len(unknown_file)}\n")
     logging.shutdown()
 
