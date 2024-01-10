@@ -301,6 +301,7 @@ Inventory Information:
         inventory_pattern = re.compile(r"NAME:\s+\"(.+?)\",\s+(.+?)\nPID:\s+(.+?),(.+?)SN:\s+(.+?)\n")
         try:
             inventory_matches = inventory_pattern.findall(show_inventory)
+            inventory_matches = list(dict.fromkeys(inventory_matches)) # remove duplicates
         except AttributeError:
             logging.warning(f"MISSING INVENTORY INFO")
             return "N/A", "N/A"
@@ -693,6 +694,7 @@ Inventory Information:
         
         try:
             inventory_matches = inventory_pattern.findall(show_inventory)
+            inventory_matches = list(dict.fromkeys(inventory_matches)) # remove duplicates
         except AttributeError:
             logging.warning(f"MISSING INVENTORY INFO")
             return "N/A", "N/A"
