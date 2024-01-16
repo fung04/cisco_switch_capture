@@ -878,10 +878,13 @@ if __name__ == "__main__":
     os.makedirs(OUTPUT_FOLDER, exist_ok=True)
     # get current path
     files = os.listdir()
-    os.remove(f"{IOS_SWITCH_FILE_NAME}") if os.path.exists(f"{IOS_SWITCH_FILE_NAME}") else None
-    os.remove(f"{NXOS_SWITCH_FILE_NAME}") if os.path.exists(f"{NXOS_SWITCH_FILE_NAME}") else None
-    os.remove(f"{IOS_SWITCH_CSV_FILE_NAME}") if os.path.exists(f"{IOS_SWITCH_CSV_FILE_NAME}") else None
-    os.remove(f"{NXOS_SWITCH_CSV_FILE_NAME}") if os.path.exists(f"{NXOS_SWITCH_CSV_FILE_NAME}") else None
+    try:
+        os.remove(f"{IOS_SWITCH_FILE_NAME}") if os.path.exists(f"{IOS_SWITCH_FILE_NAME}") else None
+        os.remove(f"{NXOS_SWITCH_FILE_NAME}") if os.path.exists(f"{NXOS_SWITCH_FILE_NAME}") else None
+        os.remove(f"{IOS_SWITCH_CSV_FILE_NAME}") if os.path.exists(f"{IOS_SWITCH_CSV_FILE_NAME}") else None
+        os.remove(f"{NXOS_SWITCH_CSV_FILE_NAME}") if os.path.exists(f"{NXOS_SWITCH_CSV_FILE_NAME}") else None
+    except PermissionError:
+        input(f"Please close the following files: \n{IOS_SWITCH_FILE_NAME}\n{NXOS_SWITCH_FILE_NAME}\n{IOS_SWITCH_CSV_FILE_NAME}\n{NXOS_SWITCH_CSV_FILE_NAME}\n\nPress Enter to exit...")
 
     files = [file for file in os.listdir() if os.path.splitext(file)[1] in TEXT_FILE_EXTENSION]
     files.sort(key=lambda x: [int(c) if c.isdigit() else c.lower() for c in re.split('([0-9]+)', x)]) # Natural Sort Function
