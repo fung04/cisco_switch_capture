@@ -27,7 +27,7 @@ EXPORT_CSV_DICT = {
     "Memory Percent Used": "N/A",
     "Total Disk": "N/A",
     "Used Disk": "N/A",
-    "Disk Percentage Used": "N/A",
+    "Disk Percent Used": "N/A",
     "5-minute CPU Average": "N/A",
     "1-minute CPU Average": "N/A",
     "5-second CPU Average": "N/A",
@@ -95,7 +95,7 @@ Percent Used : {memory_usage_percent}
 Disk Usage:
 Total Disk      : {total_disk} bytes, {total_disk_mb} MiB
 Used Disk       : {used_disk} bytes, {used_disk_mb} MiB
-Percentage Used : {disk_usage_percent}
+Percent Used    : {disk_usage_percent}
 
 CPU Usage:
 5-minute Average: {cpu_5min}
@@ -127,7 +127,7 @@ Inventory Information:
         CSV_DICT["Memory Percent Used"] = memory_usage_percent
         CSV_DICT["Total Disk"] = total_disk
         CSV_DICT["Used Disk"] = used_disk
-        CSV_DICT["Disk Percentage Used"] = disk_usage_percent
+        CSV_DICT["Disk Percent Used"] = disk_usage_percent
         CSV_DICT["5-minute CPU Average"] = cpu_5min if cpu_utlization != "N/A" else cpu_utlization
         CSV_DICT["1-minute CPU Average"] = cpu_1min
         CSV_DICT["5-second CPU Average"] = cpu_5sec
@@ -392,7 +392,7 @@ Inventory Information:
                             "Memory Percent Used": "N/A",
                             "Total Disk": "N/A",
                             "Used Disk": "N/A",
-                            "Disk Percentage Used": "N/A",
+                            "Disk Percent Used": "N/A",
                             "5-minute CPU Average": "N/A",
                             "1-minute CPU Average": "N/A",
                             "5-second CPU Average": "N/A",
@@ -486,7 +486,7 @@ Percent Used : {memory_usage_percent}
 Disk Usage: ({disk_type})
 Total Disk      : {total_disk} bytes, {total_disk_mb} MiB
 Used Disk       : {used_disk} bytes, {used_disk_mb} MiB
-Percentage Used : {disk_usage_percent}
+Percent Used : {disk_usage_percent}
 
 CPU Usage:
 5-minute Average: {cpu_5min}
@@ -518,7 +518,7 @@ Inventory Information:
         CSV_DICT["Memory Percent Used"] = memory_usage_percent
         CSV_DICT["Total Disk"] = total_disk
         CSV_DICT["Used Disk"] = used_disk
-        CSV_DICT["Disk Percentage Used"] = disk_usage_percent
+        CSV_DICT["Disk Percent Used"] = disk_usage_percent
         CSV_DICT["5-minute CPU Average"] = cpu_5min
         CSV_DICT["1-minute CPU Average"] = cpu_1min
         CSV_DICT["5-second CPU Average"] = cpu_5sec
@@ -832,7 +832,7 @@ Inventory Information:
                             "Memory Percent Used": "N/A",
                             "Total Disk": "N/A",
                             "Used Disk": "N/A",
-                            "Disk Percentage Used": "N/A",
+                            "Disk Percent Used": "N/A",
                             "5-minute CPU Average": "N/A",
                             "1-minute CPU Average": "N/A",
                             "5-second CPU Average": "N/A",
@@ -884,7 +884,7 @@ if __name__ == "__main__":
         os.remove(f"{IOS_SWITCH_CSV_FILE_NAME}") if os.path.exists(f"{IOS_SWITCH_CSV_FILE_NAME}") else None
         os.remove(f"{NXOS_SWITCH_CSV_FILE_NAME}") if os.path.exists(f"{NXOS_SWITCH_CSV_FILE_NAME}") else None
     except PermissionError:
-        input(f"Please close the following files: \n{IOS_SWITCH_FILE_NAME}\n{NXOS_SWITCH_FILE_NAME}\n{IOS_SWITCH_CSV_FILE_NAME}\n{NXOS_SWITCH_CSV_FILE_NAME}\n\nPress Enter to exit...")
+        input(f"Please close the following files:\n{IOS_SWITCH_FILE_NAME}\n{NXOS_SWITCH_FILE_NAME}\n{IOS_SWITCH_CSV_FILE_NAME}\n{NXOS_SWITCH_CSV_FILE_NAME}\n\nPress Enter to continue...")
 
     files = [file for file in os.listdir() if os.path.splitext(file)[1] in TEXT_FILE_EXTENSION]
     files.sort(key=lambda x: [int(c) if c.isdigit() else c.lower() for c in re.split('([0-9]+)', x)]) # Natural Sort Function
