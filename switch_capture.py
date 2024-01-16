@@ -116,10 +116,10 @@ Inventory Information:
 
         CSV_DICT = EXPORT_CSV_DICT.copy()
         CSV_DICT["File Name"] = file
-        CSV_DICT["IP Address"] = ip_address
         CSV_DICT["Hostname"] = hostname
         CSV_DICT["Model Number"] = model_number
         CSV_DICT["Serial Number"] = serial_number
+        CSV_DICT["IP Address"] = ip_address
         CSV_DICT["Uptime"] = uptime
         CSV_DICT["Software Version"] = software_version
         CSV_DICT["Total Memory"] = total_memory
@@ -365,26 +365,47 @@ Inventory Information:
             f.write(report)
     
     def export_dict_to_csv(self, csv_dict):
-        # Extract the keys and values from the dictionary
-        keys = EXPORT_CSV_DICT.keys()
-        values = csv_dict.values()
+        # Extracting values from csv_dict
+        values = list(csv_dict.values())
+        values.pop(-1) # remove inventory information from values
 
         # Write the data to a CSV file
         with open(f"{NXOS_SWITCH_CSV_FILE_NAME}", 'a', newline='') as csv_file:
             writer = csv.writer(csv_file)
-            if csv_dict["Inventory Information"] != "N/A":
-                for inventory_dict in csv_dict["Inventory Information"]:
-                    values = csv_dict.values()
-                    values = list(values)
-                    values.pop(-1) # remove inventory information from values
 
-                    # create a new key for values
-                    values.append(inventory_dict["Name"])
-                    values.append(inventory_dict["PID"])
-                    values.append(inventory_dict["SN"])
+            if csv_dict["Inventory Information"] != "N/A":  # stack switch
+                if len(csv_dict["Inventory Information"]) > 1:  # if more than 1 switch in stack
+                    first_inventory_dict = csv_dict["Inventory Information"][0]
+                    first_stack_switch_values = values.copy()
+                    first_stack_switch_values.append(f"Name: {first_inventory_dict['Name']}, PID: {first_inventory_dict['PID']}, SN: {first_inventory_dict['SN']}")
+                    writer.writerow(first_stack_switch_values)
 
+                    for inventory_dict in csv_dict["Inventory Information"][1:]:  # skip first row
+                        # Set values for each switch in the stack
+                        csv_dict["Serial Number"] = inventory_dict["SN"]
+                        csv_dict["Model Number"] = inventory_dict["PID"]
+
+                        # Set other values to "N/A"
+                        csv_dict.update({
+                            "Total Memory": "N/A",
+                            "Used Memory": "N/A",
+                            "Memory Percent Used": "N/A",
+                            "Total Disk": "N/A",
+                            "Used Disk": "N/A",
+                            "Disk Percentage Used": "N/A",
+                            "5-minute CPU Average": "N/A",
+                            "1-minute CPU Average": "N/A",
+                            "5-second CPU Average": "N/A",
+                            "Inventory Information": f"Name: {inventory_dict['Name']}, PID: {inventory_dict['PID']}, SN: {inventory_dict['SN']}"
+                        })
+
+                        # Write values to the CSV file
+                        writer.writerow(list(csv_dict.values()))
+                else:
+                    values.append("Standalone Switch")
                     writer.writerow(values)
-            else:
+            else:  # standalone switch
+                values.append("Standalone Switch")
                 writer.writerow(values)
 
 
@@ -486,10 +507,10 @@ Inventory Information:
         
         CSV_DICT = EXPORT_CSV_DICT.copy()
         CSV_DICT["File Name"] = file
-        CSV_DICT["IP Address"] = ip_address
         CSV_DICT["Hostname"] = hostname
         CSV_DICT["Model Number"] = model_number
         CSV_DICT["Serial Number"] = serial_number
+        CSV_DICT["IP Address"] = ip_address
         CSV_DICT["Uptime"] = uptime
         CSV_DICT["Software Version"] = software_version
         CSV_DICT["Total Memory"] = total_memory
@@ -785,29 +806,47 @@ Inventory Information:
             f.write(report)
 
     def export_dict_to_csv(self, csv_dict):
-        # Extract the keys and values from the dictionary
-        keys = EXPORT_CSV_DICT.keys()
-        values = csv_dict.values()
-
-        # Write the data to a CSV file
+        # Extracting values from csv_dict
+        values = list(csv_dict.values())
+        values.pop(-1) # remove inventory information from values
+        
         with open(f"{IOS_SWITCH_CSV_FILE_NAME}", 'a', newline='') as csv_file:
             writer = csv.writer(csv_file)
-            if csv_dict["Inventory Information"] != "N/A":
-                for inventory_dict in csv_dict["Inventory Information"]:
-                    values = csv_dict.values()
-                    values = list(values)
-                    values.pop(-1) # remove inventory information from values
 
-                    # create a new key for values
-                    values.append(inventory_dict["Name"])
-                    values.append(inventory_dict["PID"])
-                    values.append(inventory_dict["SN"])
+            if csv_dict["Inventory Information"] != "N/A":  # stack switch
+                if len(csv_dict["Inventory Information"]) > 1:  # if more than 1 switch in stack
+                    first_inventory_dict = csv_dict["Inventory Information"][0]
+                    first_stack_switch_values = values.copy()
+                    first_stack_switch_values.append(f"Name: {first_inventory_dict['Name']}, PID: {first_inventory_dict['PID']}, SN: {first_inventory_dict['SN']}")  # First stack switch
+                    writer.writerow(first_stack_switch_values)
 
+                    for inventory_dict in csv_dict["Inventory Information"][1:]:  # skip first row
+                        # Set values for each switch in the stack
+                        csv_dict["Serial Number"] = inventory_dict["SN"]
+                        csv_dict["Model Number"] = inventory_dict["PID"]
+
+                        # Set other values to "N/A"
+                        csv_dict.update({
+                            "Total Memory": "N/A",
+                            "Used Memory": "N/A",
+                            "Memory Percent Used": "N/A",
+                            "Total Disk": "N/A",
+                            "Used Disk": "N/A",
+                            "Disk Percentage Used": "N/A",
+                            "5-minute CPU Average": "N/A",
+                            "1-minute CPU Average": "N/A",
+                            "5-second CPU Average": "N/A",
+                            "Inventory Information": f"Name: {inventory_dict['Name']}, PID: {inventory_dict['PID']}, SN: {inventory_dict['SN']}"
+                        })
+
+                        # Write values to the CSV file
+                        writer.writerow(list(csv_dict.values()))
+                else:
+                    values.append("Standalone Switch")
                     writer.writerow(values)
-            else:
+            else:  # standalone switch
+                values.append("Standalone Switch")
                 writer.writerow(values)
-           
-            # writer.writerow(values)
            
 class CustomFormatter(logging.Formatter):
     def format(self, record):
