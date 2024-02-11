@@ -13,6 +13,8 @@ NXOS_SWITCH_FILE_NAME = f"{OUTPUT_FOLDER}/2_NXOS_report.txt"
 IOS_SWITCH_FILE_NAME = f"{OUTPUT_FOLDER}/1_IOS_report.txt"
 NXOS_SWITCH_CSV_FILE_NAME = f"{OUTPUT_FOLDER}/2_NXOS_report.csv"
 IOS_SWITCH_CSV_FILE_NAME = f"{OUTPUT_FOLDER}/1_IOS_report.csv"
+CISCO_WLC_FILE_NAME = f"{OUTPUT_FOLDER}/3_WLC_report.txt"
+CISCO_WLC_AP_FILE_NAME = f"{OUTPUT_FOLDER}/ALL_WLC_AP_report.csv"
 
 EXPORT_CSV_DICT = {
     "File Name": "N/A",
@@ -34,6 +36,33 @@ EXPORT_CSV_DICT = {
     "Cisco Timestamp": "N/A",
     "Putty Timestamp": "N/A",
     "Inventory Information": "N/A"
+}
+
+WLC_INFO_DICT = {
+    "File Name": "N/A",
+    "IP Address": "N/A",
+    "Hostname": "N/A",
+    "Model Number": "N/A",
+    "Serial Number": "N/A",
+    "Uptime": "N/A",
+    "Software Version": "N/A",
+    "Total Memory": "N/A",
+    "Used Memory": "N/A",
+    "Memory Percent Used": "N/A",
+    "Total Disk": "N/A",
+    "Used Disk": "N/A",
+    "Disk Percent Used": "N/A",
+    "CPU Average": "N/A",
+    "Cisco Timestamp": "N/A",
+    "Putty Timestamp": "N/A",
+}
+
+AP_INFO_DICT = {
+    "Model": "N/A",
+    "IP Address": "N/A",
+    "Serial Number": "N/A",
+    "Uptime": "N/A",
+    "AP Name": "N/A",
 }
 
 class Nexus_Switch:
@@ -847,7 +876,276 @@ Inventory Information:
             else:  # standalone switch
                 values.append("Standalone Switch")
                 writer.writerow(values)
-           
+
+class Cisco_WLC:
+    def __init__(self, data, controller_name):
+        print(f"Cisco WLC : {file} [{controller_name}]")
+        ap_info_dict_list = [] # a list of dict for all ap info of a wlc
+
+        # show_run_pattern = re.compile(r"\(.*?\) \>sh(?:ow) run(?:ning)(.+?)\(.+?\) \>", re.DOTALL)
+        show_run_pattern = re.compile(rf"\({controller_name}\) \>sh(?:ow) run(?:ning)?(?:-config)?(.+?)\)\s>", re.DOTALL)
+        wlc_ap_pattern = re.compile(rf"\({controller_name}\) \>show ap sum(?:mary)?(.+?)\)\s>", re.DOTALL)
+        wlc_ap_uptime_pattern = re.compile(rf"\({controller_name}\) \>show ap uptime(.+?)\)\s>", re.DOTALL)
+        wlc_ap_inventory_pattern = re.compile(rf"\({controller_name}\) \>show ap inv(?:entory)?\s+all(.+?)\)\s>", re.DOTALL)
+        wlc_cpu_pattern = re.compile(rf"\({controller_name}\) \>show cpu(.+?)\)\s>", re.DOTALL)
+        wlc_memory_pattern = re.compile(rf"\({controller_name}\) \>show memory(.+?)\)\s>", re.DOTALL)
+        wlc_disk_pattern = re.compile(rf"\({controller_name}\) \>test system disk-usage(.+?)\)\s>", re.DOTALL)
+        putty_timestamp_pattern = re.compile(r"(?:PuTTY|MobaXterm) log (\d{4}\.\d{2}.\d{2} \d{2}:\d{2}:\d{2})")
+
+        wlc_show_run = self.extract_info(show_run_pattern, data, "No `show running config` command")
+        putty_timestamp = self.extract_info(putty_timestamp_pattern, data, "No `PuTTY log timestamp` in file")
+        wlc_cpu_info = self.extract_info(wlc_cpu_pattern, data, "No `show cpu usage` command")
+        wlc_memory_info = self.extract_info(wlc_memory_pattern, data, "No `show memory summary ` command")
+        wlc_ap_summary = self.extract_info(wlc_ap_pattern, data, "No `show ap summary` command")
+        wlc_ap_uptime = self.extract_info(wlc_ap_uptime_pattern, data, "No `show ap uptime` command")
+        wlc_ap_inventory = self.extract_info(wlc_ap_inventory_pattern, data, "No `show ap inventory all` command")
+        wlc_disk_pattern = self.extract_info(wlc_disk_pattern, data, "No `test system disk-usage` command")
+        
+        wlc_dict = WLC_INFO_DICT.copy()
+        wlc_dict["File Name"] = file
+        wlc_dict["Putty Timestamp"] = datetime.strptime(putty_timestamp, "%Y.%m.%d %H:%M:%S")
+        wlc_dict = self.extract_wlc_showrun(wlc_show_run, wlc_dict)
+        wlc_dict = self.extract_wlc_cpu(wlc_cpu_info, wlc_dict)
+        wlc_dict = self.extract_wlc_memory(wlc_memory_info, wlc_dict)
+        wlc_dict = self.extract_disk_usage(wlc_disk_pattern, wlc_dict)
+        
+        ap_info_dict_list = self.extract_ap_summary(wlc_ap_summary, ap_info_dict_list)
+        ap_info_dict_list = self.extract_ap_uptime(wlc_ap_uptime, ap_info_dict_list)
+        ap_info_dict_list = self.extract_ap_inventory(wlc_ap_inventory, ap_info_dict_list)
+
+        self.export_report(wlc_dict, ap_info_dict_list)
+
+    def extract_wlc_showrun(self, data, wlc_dict):
+        if data is None: return wlc_dict
+
+        wlc_model_sn_pattern = re.compile(r"\DESCR:\s\"(.+?)\"\n+PID:\s(.+?),.+\SN:\s(.+?)\n")
+        wlc_version_pattern = re.compile(r"Product Version\.+\s(.+?)\n")
+        wlc_uptime_pattern = re.compile(r"Up Time\.+\s(.+?)\n")
+        wlc_hostname_pattern = re.compile(r"System Name\.+\s(.+?)\n")
+        wlc_ipaddress_pattern = re.compile(r"IP Address\.+\s(.+?)\n")
+        wlc_time_pattern = re.compile(r"Information:\n+Time\.+\s(.+?)\s\n")
+
+        #wlc_model_sn_pattern.findall(data)
+        wlc_model_sn_info = wlc_model_sn_pattern.search(data)
+        wlc_version_info = wlc_version_pattern.search(data)
+        wlc_uptime_info = wlc_uptime_pattern.search(data)
+        wlc_hostname_info = wlc_hostname_pattern.search(data)
+        wlc_ipaddress_info = wlc_ipaddress_pattern.search(data)
+        wlc_time_info = wlc_time_pattern.search(data)
+        
+        if wlc_model_sn_info:
+            wlc_dict["Model Number"] = f'{wlc_model_sn_info.group(2)} ({wlc_model_sn_info.group(1)})'
+            wlc_dict["Serial Number"] = wlc_model_sn_info.group(3)
+        else:
+            logging.warning(f"MISSING MODEL NUMBER OR SERIAL NUMBER IN FILE")
+            wlc_dict["Model Number"] = "N/A"
+            wlc_dict["Serial Number"] = "N/A"
+        
+        if wlc_version_info:
+            wlc_dict["Software Version"] = wlc_version_info.group(1)
+        else:
+            logging.warning(f"MISSING SOFTWARE VERSION IN FILE")
+            wlc_dict["Software Version"] = "N/A"
+        
+        if wlc_uptime_info:
+            wlc_dict["Uptime"] = wlc_uptime_info.group(1)
+        else:
+            logging.warning(f"MISSING UPTIME IN FILE")
+            wlc_dict["Uptime"] = "N/A"
+        
+        if wlc_hostname_info:
+            wlc_dict["Hostname"] = wlc_hostname_info.group(1)
+        else:
+            logging.warning(f"MISSING HOSTNAME IN FILE")
+            wlc_dict["Hostname"] = "N/A"
+        
+        if wlc_ipaddress_info:
+            wlc_dict["IP Address"] = wlc_ipaddress_info.group(1)
+        else:
+            logging.warning(f"MISSING IP ADDRESS IN FILE")
+            wlc_dict["IP Address"] = "N/A"
+        if wlc_time_info:
+            wlc_dict["Cisco Timestamp"] = wlc_time_info.group(1)
+            wlc_dict["Cisco Timestamp"] = datetime.strptime(wlc_dict["Cisco Timestamp"], "%a %b %d %H:%M:%S %Y")
+        else:
+            logging.warning(f"MISSING CISCO TIMESTAMP IN FILE")
+            wlc_dict["Cisco Timestamp"] = "N/A"
+
+        return wlc_dict
+    
+    def extract_disk_usage(self, data, wlc_dict):
+        if data is None: return wlc_dict
+
+        disk_usage_pattern = re.compile(r"(\d+\.\d+|\d+)(?:M|k| )\s+(\d+\.\d+|\d+)(?:M|k| )\s+(\d+\.\d+|\d+)(?:M|k| )\s+(\d{1,2})%\s+.*\/run\n")
+        disk_usage_info = disk_usage_pattern.search(data)
+
+        try:
+            total_disk = float(disk_usage_info.group(1))
+            used_disk = float(disk_usage_info.group(1)) - float(disk_usage_info.group(3))
+
+            wlc_dict["Total Disk"] = round(total_disk,2)
+            wlc_dict["Used Disk"] = round(used_disk,2)
+            wlc_dict["Disk Percent Used"] = round(used_disk / total_disk * 100, 2)
+        except AttributeError:
+            wlc_dict["Total Disk"] = "N/A"
+            wlc_dict["Used Disk"] = "N/A"
+            wlc_dict["Disk Percent Used"] = "N/A"
+            logging.warning(f"MISSING DISK USAGE INFO IN FILE")
+        
+        return wlc_dict
+
+    def extract_wlc_cpu(self, data, wlc_dict):
+        if data is None: return wlc_dict
+
+        cpu_load_pattern = re.compile(r"Current\sCPU\(s\)\sload:\s(\d+)%")
+        cpu_load_info = cpu_load_pattern.search(data)
+
+        try:
+            wlc_dict["CPU Average"] = cpu_load_info.group(1)
+        except AttributeError:
+            wlc_dict["CPU Average"] = "N/A"
+            logging.warning(f"MISSING CPU USAGE INFO IN FILE")
+
+        return wlc_dict
+
+    def extract_wlc_memory(self, data, wlc_dict):
+        if data is None: return wlc_dict
+
+        total_memory_pattern = re.compile(r"Total System Memory\.+ \((\d+)\s+KB\) (\d+) MB")
+        free_memory_pattern = re.compile(r"Total System Free Memory\.+ \((\d+)\s+KB\) (\d+) MB")
+
+        try:
+            total_memory_mb = int(total_memory_pattern.search(data).group(2))
+            free_memory_mb = int(free_memory_pattern.search(data).group(2))
+            used_memory_mb = total_memory_mb - free_memory_mb
+
+            wlc_dict["Total Memory"] = total_memory_mb
+            wlc_dict["Used Memory"] = used_memory_mb
+            wlc_dict["Memory Percent Used"] = round(used_memory_mb / total_memory_mb * 100, 2)
+        except (AttributeError, ValueError):
+            wlc_dict["Total Memory"] = "N/A"
+            wlc_dict["Used Memory"] = "N/A"
+            wlc_dict["Memory Percent Used"] = "N/A"
+            logging.warning(f"MISSING MEMORY USAGE INFO IN FILE")
+
+        return wlc_dict
+
+    def extract_ap_summary(self, data, ap_list):
+        if data is None: return ap_list
+
+        wlc_ap_info_pattern = re.compile(r"-\n(.+?)\n\n", re.DOTALL)
+        wlc_ap_info = wlc_ap_info_pattern.search(data) # capture all ap info section
+        if wlc_ap_info:
+            wlc_ap_info = wlc_ap_info.group(1).split("\n")
+            wlc_ap_info = [ap for ap in wlc_ap_info if ap != ''] # remove empty string
+            
+            for ap in wlc_ap_info:
+                ap_dict = AP_INFO_DICT.copy()
+
+                ap_info = re.split(r'\s\s+', ap)
+
+                ap_dict["AP Name"] = ap_info[0]
+                ap_dict["Model"] = ap_info[2]
+                ap_dict["IP Address"] = ap_info[6]
+
+                ap_list.append(ap_dict)
+        else:
+            logging.warning(f"MISSING AP SUMMARY IN FILE")
+            
+        return ap_list        
+    
+    def extract_ap_uptime(self, data, ap_list):
+        if data is None: return ap_list
+
+        ap_uptime_pattern = re.compile(r"-\n(.+?)\n\n", re.DOTALL)
+        wlc_ap_list = ap_uptime_pattern.search(data)
+        
+        if wlc_ap_list:
+            wlc_ap_list = wlc_ap_list.group(1).split("\n")
+            wlc_ap_list = [ap for ap in wlc_ap_list if ap != ''] # remove empty string
+
+            for ap in wlc_ap_list:
+                uptime_info = re.split(r'\s\s+', ap)  # Split each line using one or more spaces as the delimiter 
+                for ap_info in ap_list:
+
+                    if ap_info["AP Name"] == uptime_info[0]:
+                        ap_info["Uptime"] = uptime_info[2]
+        else:
+            logging.warning(f"MISSING AP UPTIME IN FILE")
+            
+        return ap_list
+    
+    def extract_ap_inventory(self, data, ap_list):  
+        if data is None: return ap_list
+
+        ap_inventory_pattern = re.compile(r"Inventory for (.*?)\n+NAME:\s\"(.*?)\"\s+,\s+DESCR:\s+\"(.*?)\"\n+PID:\s+(.*?),\s+VID:\s+(.*?),\s+SN:\s(.*?)\n\n")
+        wlc_ap_list = ap_inventory_pattern.findall(data)
+        if wlc_ap_list:
+            for ap in wlc_ap_list:
+                for ap_info in ap_list:
+                    if ap_info["AP Name"] == ap[0]:
+                        ap_info["Serial Number"] = ap[5]
+        else:
+            logging.warning(f"MISSING AP INVENTORY IN FILE")
+        
+        return ap_list
+
+    def export_report(self, wlc_dict, ap_list):
+        # export in two report, one for wlc txt, one for ap csv
+        report_format = f"""=~=~=~=~=~=~=~=~=~=~=~==~=~=~=~=~=~=~=~=~=~=~=
+Report for File : {file}
+~=~=~=~=~=~=~=~=~=~=~=~=~=~=~=~=~=~=~=~=~=~=~=
+IP Address       : {wlc_dict['IP Address']}
+Hostname         : {wlc_dict['Hostname']}
+Model Number     : {wlc_dict['Model Number']}
+Serial Number    : {wlc_dict['Serial Number']}
+Uptime           : {wlc_dict['Uptime']}
+Software Version : {wlc_dict['Software Version']}
+
+Memory Usage:
+Total Memory : {wlc_dict["Total Memory"]} MB
+Used Memory  : {wlc_dict["Used Memory"]} MB
+Percent Used : {wlc_dict["Memory Percent Used"]}%
+
+Disk Usage:
+Total Disk      : {wlc_dict["Total Disk"]} MB
+Used Disk       : {wlc_dict["Used Disk"]} MB
+Percent Used : {wlc_dict["Disk Percent Used"]}%
+
+CPU Usage:
+Cpu Utlization  : {wlc_dict["CPU Average"]}%
+
+Timestamps:
+Cisco Timestamp: {wlc_dict["Cisco Timestamp"]}
+Putty Timestamp: {wlc_dict["Putty Timestamp"]}
+---
+
+"""
+        
+        with open(f"{CISCO_WLC_FILE_NAME}", "a") as f:
+            f.write(report_format)
+
+        with open(f"{CISCO_WLC_AP_FILE_NAME}", "a", newline='') as f:
+            f.write(f"{file}\n")
+            writer = csv.DictWriter(f, fieldnames=AP_INFO_DICT.keys())
+            writer.writeheader()
+            writer.writerows(ap_list)
+
+    def extract_info(self, pattern, file_data, error_message):
+        try:
+            info = pattern.findall(file_data)
+            if info and len(info) > 1:
+                info = "".join(info)
+            else:
+                info = info[0]
+        except (AttributeError, IndexError):
+            info = None
+            logging.error(f"{error_message} IN FILE") 
+            # for debugging
+            # traceback.print_exc()
+        return info
+
+
 class CustomFormatter(logging.Formatter):
     def format(self, record):
         if record.levelno == logging.ERROR:
@@ -883,6 +1181,8 @@ if __name__ == "__main__":
         os.remove(f"{NXOS_SWITCH_FILE_NAME}") if os.path.exists(f"{NXOS_SWITCH_FILE_NAME}") else None
         os.remove(f"{IOS_SWITCH_CSV_FILE_NAME}") if os.path.exists(f"{IOS_SWITCH_CSV_FILE_NAME}") else None
         os.remove(f"{NXOS_SWITCH_CSV_FILE_NAME}") if os.path.exists(f"{NXOS_SWITCH_CSV_FILE_NAME}") else None
+        os.remove(f"{CISCO_WLC_FILE_NAME}") if os.path.exists(f"{CISCO_WLC_FILE_NAME}") else None
+        os.remove(f"{CISCO_WLC_AP_FILE_NAME}") if os.path.exists(f"{CISCO_WLC_AP_FILE_NAME}") else None
     except PermissionError:
         input(f"Please close the following files:\n{IOS_SWITCH_FILE_NAME}\n{NXOS_SWITCH_FILE_NAME}\n{IOS_SWITCH_CSV_FILE_NAME}\n{NXOS_SWITCH_CSV_FILE_NAME}\n\nPress Enter to continue...")
 
@@ -904,6 +1204,7 @@ if __name__ == "__main__":
     total_file = len(files)
     nxos_switch_pattern = re.compile(r"!Command:")
     ios_switch_pattern = re.compile(r"[Cc]isco IOS")
+    cisco_wlc_pattern = re.compile(r"\((.*?)\)\s>")
     unicode_escape_pattern = r'\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])'
     
     logging_init()
@@ -920,10 +1221,17 @@ if __name__ == "__main__":
                 elif ios_switch_pattern.search(data):
                     catalyst_switch = Catalyst_Switch(data)
                     processed_file.append(file)
+                elif cisco_wlc_pattern.search(data):
+                    controller_name = cisco_wlc_pattern.search(data).group(1)
+                    Cisco_WLC(data, controller_name)
+                    processed_file.append(file)
                 else:
                     unknown_file.append(file)
         except UnicodeDecodeError:
             logging.error(f"UNICODE DECODE ERROR IN FILE [{file}]")
+            unknown_file.append(file)
+        except FileNotFoundError:
+            logging.error(f"FILE NOT FOUND [{file}], CHECK PATH LENGTH LIMIT")
             unknown_file.append(file)
         
     logging.debug("\n"+"-"*50)
