@@ -201,7 +201,7 @@ Inventory Information:
             return cisco_datetime, putty_datetime
         except ValueError:
             logging.warning(f"MISSING TIMEZONE IN CONFIG")
-            return "N/A", "N/A"
+            return "N/A", datetime.strptime(putty_timestamp, '%Y.%m.%d %H:%M:%S')
     
     def extract_version_info(self, show_version_output):
         if show_version_output is None: return "N/A", "N/A", "N/A", "N/A"
@@ -268,10 +268,10 @@ Inventory Information:
             # free_memory = int(disk_usage_match[2])
         except AttributeError:
             logging.warning(f"MISSING DISK INFO")
-            total_memory = used_memory = "N/A", "N/A"
+            total_memory = used_memory = "N/A"
         except TypeError:
             logging.warning(f"DISK INFO FOUND, BUT NOT INTEGER TYPE")
-            total_memory = used_memory = "N/A", "N/A"
+            total_memory = used_memory = "N/A"
             
 
         return total_memory, used_memory
@@ -594,7 +594,7 @@ Inventory Information:
             return cisco_datetime, putty_datetime
         except ValueError:
             logging.warning(f"MISSING TIMEZONE IN CONFIG")
-            return "N/A", "N/A"
+            return "N/A", datetime.strptime(putty_timestamp, '%Y.%m.%d %H:%M:%S')
 
     def extract_version_info(self, show_version_output):
         if show_version_output is None: return "N/A", "N/A", "N/A", "N/A"
