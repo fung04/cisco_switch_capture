@@ -600,25 +600,27 @@ Inventory Information:
         if show_version_output is None: return "N/A", "N/A", "N/A", "N/A"
 
         # Initialize variables/compile regex patterns here
-        model_number_pattern = re.compile(r"Model [Nn]umber\s+:\s+(.+?)\n")
+        model_number_pattern = re.compile(r"""
+                    (?:
+                    Model [Nn]umber\s+:\s+(?P<model_type_1>.+?)\n|
+                    cisco\s(?P<model_type_2>.*?)\s|
+                    License\sInformation\sfor\s\'(?P<model_coreswitch>.*?)\'\n
+                    )""",re.VERBOSE)
         serial_number_pattern = re.compile(r"System [Ss]erial [Nn]umber\s+:\s+(.+)")
         uptime_pattern = re.compile(r"uptime is\s+(.+?)\n")
         software_version_pattern = re.compile(r"Version (.+?),")
-        model_number = serial_number = uptime = software_version = "N/A"
+        serial_number = uptime = software_version = "N/A"
 
-        model_number = model_number_pattern.search(show_version_output)
+        model_number_match = model_number_pattern.finditer(show_version_output)
         serial_number = serial_number_pattern.search(show_version_output)
         uptime = uptime_pattern.search(show_version_output)
         software_version = software_version_pattern.search(show_version_output)
-
-        if not model_number: # Core Switch
-            model_number_pattern = re.compile(r"License\sInformation\sfor\s\'(.*?)\'\n")
-            model_number = model_number_pattern.search(show_version_output)
-            logging.warning(f"MISSING MODEL NUMBER IN `show version`") if not model_number else None
-
-        if model_number:
-            model_number = model_number.group(1)
-        else:
+        
+        for match in model_number_match:
+            model_number = match.group("model_type_1") or match.group("model_coreswitch") or match.group("model_type_2")
+        
+        if model_number is None:
+            model_number = "N/A"
             logging.warning(f"MISSING MODEL NUMBER IN `show version`")
 
         if not serial_number: # Core Switch
@@ -740,7 +742,7 @@ Inventory Information:
         inventory_dict_list = []
 
         inventory_pattern = re.compile(r"NAME:\s+(.+?),\s+(.+?)\nPID:\s+(.+?),(.+?)SN:\s(.+?)\n")
-        switch_keyworad_pattern = re.compile(r"\"(?:\d{1,2}|Switch\s+\d{1,2}|Switch\d{0,2}\s+System|Switch\s\d{1,2}\s+Chassis|Chassis)\"")
+        switch_keyworad_pattern = re.compile(r"\"(?:\d{1,2}|Switch\s+\d{1,2}|Switch\d{0,2}\s+System|Switch\s\d{1,2}\s+Chassis|Chassis|Chassis \d{1,2})\"")
         
         try:
             inventory_matches = inventory_pattern.findall(show_inventory)
