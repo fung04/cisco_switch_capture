@@ -394,20 +394,21 @@ Inventory Information:
             f.write(report)
     
     def export_dict_to_csv(self, csv_dict):
-        # Extracting values from csv_dict
-        values = list(csv_dict.values())
-        values.pop(-1) # remove inventory information from values
+        # Create a copy to for standalone and first switch in the stack
+        # else csv_dict data type will get alter after saving to row
+        first_csv_dict = csv_dict.copy()  
 
-        # Write the data to a CSV file
         with open(f"{NXOS_SWITCH_CSV_FILE_NAME}", 'a', newline='') as csv_file:
             writer = csv.writer(csv_file)
 
             if csv_dict["Inventory Information"] != "N/A":  # stack switch
                 if len(csv_dict["Inventory Information"]) > 1:  # if more than 1 switch in stack
                     first_inventory_dict = csv_dict["Inventory Information"][0]
-                    first_stack_switch_values = values.copy()
-                    first_stack_switch_values.append(f"Name: {first_inventory_dict['Name']}, PID: {first_inventory_dict['PID']}, SN: {first_inventory_dict['SN']}")
-                    writer.writerow(first_stack_switch_values)
+                    
+                    first_csv_dict["Model Number"] = first_inventory_dict['PID']
+                    first_csv_dict["Serial Number"] = first_inventory_dict['SN']
+                    first_csv_dict['Inventory Information'] = f"Name: {first_inventory_dict['Name']}, PID: {first_inventory_dict['PID']}, SN: {first_inventory_dict['SN']}"
+                    writer.writerow(list(first_csv_dict.values()))
 
                     for inventory_dict in csv_dict["Inventory Information"][1:]:  # skip first row
                         # Set values for each switch in the stack
@@ -431,11 +432,11 @@ Inventory Information:
                         # Write values to the CSV file
                         writer.writerow(list(csv_dict.values()))
                 else:
-                    values.append("Standalone Switch")
-                    writer.writerow(values)
+                    first_csv_dict['Inventory Information'] = "Standalone Switch"
+                    writer.writerow(list(first_csv_dict.values()))
             else:  # standalone switch
-                values.append("Standalone Switch")
-                writer.writerow(values)
+                first_csv_dict['Inventory Information'] = "Standalone Switch"
+                writer.writerow(list(first_csv_dict.values()))
 
 
 class Catalyst_Switch:
@@ -837,9 +838,9 @@ Inventory Information:
             f.write(report)
 
     def export_dict_to_csv(self, csv_dict):
-        # Extracting values from csv_dict
-        values = list(csv_dict.values())
-        values.pop(-1) # remove inventory information from values
+        # Create a copy to for standalone and first switch in the stack
+        # else csv_dict data type will get alter after saving to row
+        first_csv_dict = csv_dict.copy()  
         
         with open(f"{IOS_SWITCH_CSV_FILE_NAME}", 'a', newline='') as csv_file:
             writer = csv.writer(csv_file)
@@ -847,9 +848,11 @@ Inventory Information:
             if csv_dict["Inventory Information"] != "N/A":  # stack switch
                 if len(csv_dict["Inventory Information"]) > 1:  # if more than 1 switch in stack
                     first_inventory_dict = csv_dict["Inventory Information"][0]
-                    first_stack_switch_values = values.copy()
-                    first_stack_switch_values.append(f"Name: {first_inventory_dict['Name']}, PID: {first_inventory_dict['PID']}, SN: {first_inventory_dict['SN']}")  # First stack switch
-                    writer.writerow(first_stack_switch_values)
+                    
+                    first_csv_dict["Model Number"] = first_inventory_dict['PID']
+                    first_csv_dict["Serial Number"] = first_inventory_dict['SN']
+                    first_csv_dict['Inventory Information'] = f"Name: {first_inventory_dict['Name']}, PID: {first_inventory_dict['PID']}, SN: {first_inventory_dict['SN']}"
+                    writer.writerow(list(first_csv_dict.values()))
 
                     for inventory_dict in csv_dict["Inventory Information"][1:]:  # skip first row
                         # Set values for each switch in the stack
@@ -873,11 +876,11 @@ Inventory Information:
                         # Write values to the CSV file
                         writer.writerow(list(csv_dict.values()))
                 else:
-                    values.append("Standalone Switch")
-                    writer.writerow(values)
+                    first_csv_dict['Inventory Information'] = "Standalone Switch"
+                    writer.writerow(list(first_csv_dict.values()))
             else:  # standalone switch
-                values.append("Standalone Switch")
-                writer.writerow(values)
+                first_csv_dict['Inventory Information'] = "Standalone Switch"
+                writer.writerow(list(first_csv_dict.values()))
 
 class Cisco_WLC:
     def __init__(self, data, controller_name):
