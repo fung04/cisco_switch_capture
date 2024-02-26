@@ -180,6 +180,8 @@ Inventory Information:
     
     def compare_clocks(self, running_config, putty_timestamp):
         if putty_timestamp is None or running_config is None: return "N/A", "N/A"
+        putty_timestamp = putty_timestamp.split("\n")[0] # For condition where two PuTTy timestamp is capture
+        putty_datetime = datetime.strptime(putty_timestamp, '%Y.%m.%d %H:%M:%S')
 
         cicso_time_pattern = re.compile(r"!Time:\s(.+?)\n")
         cisco_timezone_pattern = re.compile(r"clock timezone\s(\w{1,3})(.+?)\n")
@@ -188,20 +190,18 @@ Inventory Information:
         cisco_time_match = cicso_time_pattern.search(running_config)
         if not cisco_time_match:
             logging.warning(f"MISSING CISCO TIMESTAMP IN CONFIG")
-            return "N/A", datetime.strptime(putty_timestamp, '%Y.%m.%d %H:%M:%S')
+            return "N/A", putty_datetime
 
         cisco_time_str = cisco_time_match.group(1).replace("  ", " ")
         try:
             cisco_tz_match = cisco_timezone_pattern.search(running_config)
             cisco_tz = cisco_tz_match.group(1) if cisco_tz_match else "N/A"
-
-            putty_datetime = datetime.strptime(putty_timestamp, '%Y.%m.%d %H:%M:%S')
             cisco_datetime = f"{datetime.strptime(cisco_time_str, cisco_format)} {cisco_tz}"
 
             return cisco_datetime, putty_datetime
         except ValueError:
             logging.warning(f"MISSING TIMEZONE IN CONFIG")
-            return "N/A", datetime.strptime(putty_timestamp, '%Y.%m.%d %H:%M:%S')
+            return "N/A", putty_datetime
     
     def extract_version_info(self, show_version_output):
         if show_version_output is None: return "N/A", "N/A", "N/A", "N/A"
@@ -572,30 +572,29 @@ Inventory Information:
 
     def compare_clocks(self, putty_timestamp, cisco_timestamp):
         if putty_timestamp is None or cisco_timestamp is None: return "N/A", "N/A"
+        
+        # Extract PuTTy timestamp
+        putty_timestamp = putty_timestamp.split("\n")[0] # For condition where two PuTTy timestamp is capture
+        putty_datetime = datetime.strptime(putty_timestamp, '%Y.%m.%d %H:%M:%S')
 
         # Initialize variables/compile regex patterns here
         cisco_time_pattern = re.compile(r"(\d{2}:\d{2}:\d{2}.\d{3} (\w{2,3}) \w{3} \w{3} \d{1,2} \d{4})")
-
         cisco_time_match = cisco_time_pattern.search(cisco_timestamp)
+
         if not cisco_time_match:
             logging.warning(f"MISSING CISCO TIMESTAMP IN CONFIG")
-            return "N/A", datetime.strptime(putty_timestamp, '%Y.%m.%d %H:%M:%S')
+            return "N/A", putty_datetime
 
-        cisco_time_str = cisco_time_match.group(1)
-        try:
-            # Get Cisco timezone details
-            cisco_tz_match = cisco_time_match.group(2)
-            cisco_tz = cisco_tz_match if cisco_tz_match else "N/A"
+        cisco_time_str, cisco_tz_match = cisco_time_match.group(1), cisco_time_match.group(2)
+        cisco_tz = cisco_tz_match if cisco_tz_match else "N/A"
+
+        if cisco_tz != "N/A":
             cisco_format = f'%H:%M:%S.%f {cisco_tz} %a %b %d %Y'
-
-            # Convert Cisco timestamp and Putty timestamp to datetime objects
             cisco_datetime = f"{datetime.strptime(cisco_time_str, cisco_format)} {cisco_tz}"
-            putty_datetime = datetime.strptime(putty_timestamp, '%Y.%m.%d %H:%M:%S')
-
             return cisco_datetime, putty_datetime
-        except ValueError:
-            logging.warning(f"MISSING TIMEZONE IN CONFIG")
-            return "N/A", datetime.strptime(putty_timestamp, '%Y.%m.%d %H:%M:%S')
+        else:
+            logging.warning(f"CISCO TIMESTAMP WITHOUT TIMEZONE")
+            return "N/A", putty_datetime
 
     def extract_version_info(self, show_version_output):
         if show_version_output is None: return "N/A", "N/A", "N/A", "N/A"
