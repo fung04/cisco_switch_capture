@@ -604,7 +604,8 @@ Inventory Information:
                     (?:
                     Model [Nn]umber\s+:\s+(?P<model_type_1>.+?)\n|
                     cisco\s(?P<model_type_2>.*?)\s|
-                    License\sInformation\sfor\s\'(?P<model_coreswitch>.*?)\'\n
+                    License\sInformation\sfor\s\'(?P<model_coreswitch>.*?)\'\n|
+                    Cisco\s(?P<model_type_3>.*?)\s                      
                     )""",re.VERBOSE)
         serial_number_pattern = re.compile(r"System [Ss]erial [Nn]umber\s+:\s+(.+)")
         uptime_pattern = re.compile(r"uptime is\s+(.+?)\n")
@@ -655,7 +656,7 @@ Inventory Information:
         if memory_usage is None: return "N/A", "N/A"
 
         # Initialize variables/compile regex patterns here
-        memory_usage_pattern = re.compile(r"Processor Pool Total:\s+(\d+) Used:\s+(\d+) Free:\s+(\d+)|System memory\s+:\s+(\d+)K\stotal,\s(\d+)K\sused,\s(\d+)K")
+        memory_usage_pattern = re.compile(r"(?:Processor Pool Total:|Total:)\s+(\d+)\,? Used:\s+(\d+)\,? Free:\s+(\d+)|System memory\s+:\s+(\d+)K\stotal,\s(\d+)K\sused,\s(\d+)K")
                 
         try:
             memory_usage_match = memory_usage_pattern.search(memory_usage)
