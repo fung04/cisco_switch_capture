@@ -212,13 +212,15 @@ Inventory Information:
                      NXOS:\s(?P<software_version>.*)|
                      Hardware\n(?P<model_number>.*))""",re.VERBOSE)
 
-        show_version_matches = show_version_pattern.finditer(show_version_output)
+        show_version_matches = show_version_pattern.search(show_version_output)
 
-        for match in show_version_matches:
-            model_number = match.group("model_number") or model_number
-            serial_number = match.group("serial_number") or serial_number
-            uptime = match.group("uptime") or uptime
-            software_version = match.group("software_version") or software_version
+        if show_version_matches:
+            show_version_matches = show_version_pattern.finditer(show_version_output)
+            for match in show_version_matches:
+                model_number = match.group("model_number") or model_number
+                serial_number = match.group("serial_number") or serial_number
+                uptime = match.group("uptime") or uptime
+                software_version = match.group("software_version") or software_version
         
         uptime = uptime.strip() if uptime != "N/A" else "N/A"
         software_version = software_version.strip() if software_version != "N/A" else "N/A"
@@ -293,18 +295,20 @@ Inventory Information:
             )
             """, re.VERBOSE)
 
-        cpu_usage_matches = cpu_usage_pattern.finditer(show_sysresources)
+        cpu_usage_matches = cpu_usage_pattern.search(show_sysresources)
 
-        for cpu_usage in cpu_usage_matches:
-            fivesec_1 = cpu_usage.group("five_sec")
-            onemin_1 = cpu_usage.group("one_min")
-            fivemin_1 = cpu_usage.group("five_min")
-            cputil_percent = cpu_usage.group("cputil_idle")
+        if cpu_usage_matches:
+            cpu_usage_matches = cpu_usage_pattern.finditer(show_sysresources)
+            for cpu_usage in cpu_usage_matches:
+                fivesec_1 = cpu_usage.group("five_sec")
+                onemin_1 = cpu_usage.group("one_min")
+                fivemin_1 = cpu_usage.group("five_min")
+                cputil_percent = cpu_usage.group("cputil_idle")
 
-            cpu_1min = onemin_1 or cpu_1min  # Assign if non-empty
-            cpu_5sec = fivesec_1 or cpu_5sec
-            cpu_5min = fivemin_1 or cpu_5min
-            cpu_utlization = cputil_percent or cpu_utlization
+                cpu_1min = onemin_1 or cpu_1min  # Assign if non-empty
+                cpu_5sec = fivesec_1 or cpu_5sec
+                cpu_5min = fivemin_1 or cpu_5min
+                cpu_utlization = cputil_percent or cpu_utlization
         
         cpu_utlization = round(100 - float(cpu_utlization), 2)
         
@@ -612,18 +616,19 @@ Inventory Information:
         software_version_pattern = re.compile(r"Version (.+?),")
         serial_number = uptime = software_version = "N/A"
 
-        model_number_match = model_number_pattern.finditer(show_version_output)
+        model_number_match = model_number_pattern.search(show_version_output)
         serial_number = serial_number_pattern.search(show_version_output)
         uptime = uptime_pattern.search(show_version_output)
         software_version = software_version_pattern.search(show_version_output)
         
-        for match in model_number_match:
-            model_number = match.group("model_type_1") or match.group("model_coreswitch") or match.group("model_type_2")
-        
-        if model_number is None:
+        if model_number_match:
+            model_number_match = model_number_pattern.finditer(show_version_output)
+            for match in model_number_match:
+                model_number = match.group("model_type_1") or match.group("model_coreswitch") or match.group("model_type_2") or match.group("model_type_3")
+        else:
             model_number = "N/A"
             logging.warning(f"MISSING MODEL NUMBER IN `show version`")
-
+            
         if not serial_number: # Core Switch
             serial_number_pattern = re.compile(r"Processor\s[Bb]oard\sID\s(.*?)\n")
             serial_number = serial_number_pattern.search(show_version_output)
