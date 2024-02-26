@@ -77,7 +77,7 @@ class Nexus_Switch:
         show_inventory_pattern = re.compile(r"\#\sshow inv(.+?)\#", re.DOTALL)
         directory_pattern = re.compile(r"\#\sdir(.+?)\#", re.DOTALL)
 
-        logging.info(f" NXOS Switch : {file} (show tech)" if show_tech_match else f" NXOS Switch : {file}")
+        logging.info(f"NXOS Switch : {file} (show tech)" if show_tech_match else f"NXOS Switch : {file}")
         
         running_config = self.extract_info(running_config_pattern, data, "No `show running config` command")
         show_processcpu = self.extract_info(show_processcpu_pattern, data, "No `show process cpu` command")
@@ -516,7 +516,7 @@ Percent Used : {memory_usage_percent}
 Disk Usage: ({disk_type})
 Total Disk      : {total_disk} bytes, {total_disk_mb} MiB
 Used Disk       : {used_disk} bytes, {used_disk_mb} MiB
-Percent Used : {disk_usage_percent}
+Percent Used    : {disk_usage_percent}
 
 CPU Usage:
 5-minute Average: {cpu_5min}
@@ -881,9 +881,10 @@ Inventory Information:
                 first_csv_dict['Inventory Information'] = "Standalone Switch"
                 writer.writerow(list(first_csv_dict.values()))
 
+
 class Cisco_WLC:
     def __init__(self, data, controller_name):
-        print(f"Cisco WLC : {file} [{controller_name}]")
+        logging.info(f" WLC Cisco  : {file} [{controller_name}]")
         ap_info_dict_list = [] # a list of dict for all ap info of a wlc
 
         # show_run_pattern = re.compile(r"\(.*?\) \>sh(?:ow) run(?:ning)(.+?)\(.+?\) \>", re.DOTALL)
@@ -1114,7 +1115,7 @@ Percent Used : {wlc_dict["Memory Percent Used"]}%
 Disk Usage:
 Total Disk      : {wlc_dict["Total Disk"]} MB
 Used Disk       : {wlc_dict["Used Disk"]} MB
-Percent Used : {wlc_dict["Disk Percent Used"]}%
+Percent Used    : {wlc_dict["Disk Percent Used"]}%
 
 CPU Usage:
 Cpu Utlization  : {wlc_dict["CPU Average"]}%
