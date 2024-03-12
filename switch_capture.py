@@ -481,8 +481,7 @@ class Catalyst_Switch:
         cpu_usage_info = self.extract_info(cpu_usage_pattern, data, "No `show process cpu` command")
         memory_usage_info = self.extract_info(memory_usage_pattern, data, "No `show process memory` command")
         disk_usage_info = self.extract_info(file_systems_pattern, data, "No `show file systems` command")
-        if disk_usage_info is None:
-            dir_info = self.extract_info(directory_pattern, data, "No `dir` command")
+        dir_info = self.extract_info(directory_pattern, data, "No `dir` command") if disk_usage_info is None else None
         cisco_datatime_info = self.extract_info(cisco_timestamp_pattern, data, "No `show clock` commadn")
         putty_datetime_info = self.extract_info(putty_timestamp_pattern, data, "No `PuTTY log timestamp` in file")
         pnp_stack_info = self.extract_info(pnp_stack_pattern, data, "No `show inventory` command")
@@ -498,7 +497,7 @@ class Catalyst_Switch:
         used_memory_mb = round(used_memory/(1024**2), 2) if used_memory != "N/A" else "N/A"
         memory_usage_percent = "N/A" if total_memory == "N/A" else f"{round(used_memory/total_memory*100, 2)}%"
 
-        total_disk, used_disk, disk_type = self.extract_disk_info(disk_usage_info) if disk_usage_info else self.extract_dir_info(dir_info)
+        total_disk, used_disk, disk_type = self.extract_disk_info(disk_usage_info, dir_info)
         total_disk_mb = round(total_disk/1024**2, 2) if total_disk != "N/A" else "N/A"
         used_disk_mb = round(used_disk/1024**2, 2) if used_disk != "N/A" else "N/A"
         disk_usage_percent = "N/A" if total_disk == "N/A" else f"{round(used_disk/total_disk*100, 2)}%"
@@ -716,37 +715,30 @@ Inventory Information:
       
         return total_memory, used_memory
     
-    def extract_disk_info(self, disk_usage):
-        if disk_usage is None: return "N/A", "N/A", 'N/A'
-        
+    def extract_disk_info(self, disk_usage, dir_info):
+        if disk_usage is None and dir_info is None: return "N/A", "N/A", "N/A"
+
         disk_usage_pattern = re.compile(r"\*\s+(\d+)\s+(\d+)\s+(\w+)")
+        dir_info_pattern = re.compile(r"(\d+)\sb(?:ytes|yte)\stotal\s\((\d+)\sb(?:ytes|yte)\sfree\)")
 
-        try:
+        total_memory = used_memory = disk_type = "N/A"
+
+        if disk_usage:
             disk_usage_match = disk_usage_pattern.search(disk_usage)
-
-            total_memory = int(disk_usage_match[1])
-            used_memory = int(disk_usage_match[2])
-            disk_type = disk_usage_match[3]
-        except (TypeError, AttributeError):
-            logging.warning(f"MISSING DISK INFO")
-            total_memory = used_memory = disk_type = "N/A"
+            if disk_usage_match:
+                total_memory = int(disk_usage_match[1])
+                used_memory = int(disk_usage_match[2])
+                disk_type = disk_usage_match[3]
+        elif dir_info:
+            dir_info_match = dir_info_pattern.search(dir_info)
+            if dir_info_match:
+                total_memory = int(dir_info_match[1])
+                used_memory = int(dir_info_match[2])
+        
+        if not (disk_usage or dir_info):
+            logging.warning(f"ERROR IN DISK INFO EXTRACTION")
         
         return total_memory, used_memory, disk_type
-
-    def extract_dir_info(self, dir_info):
-        if dir_info is None: return "N/A", "N/A", "N/A"
-        disk_usage_pattern = re.compile(r"(\d+)\sb(?:ytes|yte)\stotal\s\((\d+)\sb(?:ytes|yte)\sfree\)")
-
-        try:
-            disk_usage_match = disk_usage_pattern.search(dir_info)
-
-            total_memory = int(disk_usage_match[1])
-            used_memory = int(disk_usage_match[2])
-        except (TypeError, AttributeError):
-            logging.warning(f"MISSING DISK INFO")
-            total_memory = used_memory = "N/A"
-
-        return total_memory, used_memory, "N/A"
 
     def extract_cpu_info(self, cpu_usage):
         if cpu_usage is None: return "N/A", "N/A", "N/A"
@@ -906,6 +898,8 @@ Inventory Information:
                             "5-minute CPU Average": "N/A",
                             "1-minute CPU Average": "N/A",
                             "5-second CPU Average": "N/A",
+                            "NTP Status": "N/A",
+                            "Boot Mode": "N/A",
                             "Inventory Information": f"Name: {inventory_dict['Name']}, PID: {inventory_dict['PID']}, SN: {inventory_dict['SN']}"
                         })
 
