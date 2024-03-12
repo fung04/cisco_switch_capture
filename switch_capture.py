@@ -24,6 +24,7 @@ EXPORT_CSV_DICT = {
     "Serial Number": "N/A",
     "Uptime": "N/A",
     "Software Version": "N/A",
+    "Boot Mode": "N/A",
     "Total Memory": "N/A",
     "Used Memory": "N/A",
     "Memory Percent Used": "N/A",
@@ -35,6 +36,7 @@ EXPORT_CSV_DICT = {
     "5-second CPU Average": "N/A",
     "Cisco Timestamp": "N/A",
     "Putty Timestamp": "N/A",
+    "NTP Status": "N/A",
     "Inventory Information": "N/A"
 }
 
@@ -211,7 +213,7 @@ Inventory Information:
                      Kernel\suptime\sis(?P<uptime>.*)|
                      NXOS:\s(?P<software_version>.*)|
                      Hardware\n(?P<model_number>.*))""",re.VERBOSE)
-
+        
         show_version_matches = show_version_pattern.search(show_version_output)
 
         if show_version_matches:
@@ -450,6 +452,8 @@ class Catalyst_Switch:
         show_tech_match = re.search(r"#sh(?:ow)? tech", data)
         putty_timestamp_pattern = re.compile(r"(?:PuTTY|MobaXterm) log (\d{4}\.\d{2}.\d{2} \d{2}:\d{2}:\d{2})")
         directory_pattern = re.compile(r"\#dir(.+?)\#", re.DOTALL)
+        ntp_status_pattern = re.compile(r"#sh(?:ow)? ntp sta(?:tus|tu)?(.+?)#", re.DOTALL)
+        boot_mode_pattern = re.compile(r"#sh(?:ow)? boot(.+?)#", re.DOTALL)
 
         if show_tech_match:
             # require show tech to be run
@@ -460,7 +464,6 @@ class Catalyst_Switch:
             memory_usage_pattern = re.compile(r"-\sshow process memory(.+?)\n\-{4,}", re.DOTALL)
             file_systems_pattern = re.compile(r"-\sshow file systems(.+?)\n\n\-{4,}", re.DOTALL)
             pnp_stack_pattern = re.compile(r"-\sshow inventory(.+?)\n\n\-{4,}", re.DOTALL)
-            ntp_status_pattern = re.compile(r"#sh(?:ow)? ntp sta(?:tus|tu)?(.+?)#", re.DOTALL)
         else:
             show_version_pattern = re.compile(r"#sh(?:ow)? ver(?:sion)?(.+?)#", re.DOTALL)
             running_config_pattern = re.compile(r"#sh(?:ow)? run(?:ning)?(.+?)#", re.DOTALL)
@@ -484,10 +487,11 @@ class Catalyst_Switch:
         putty_datetime_info = self.extract_info(putty_timestamp_pattern, data, "No `PuTTY log timestamp` in file")
         pnp_stack_info = self.extract_info(pnp_stack_pattern, data, "No `show inventory` command")
         ntp_status_info = self.extract_info(ntp_status_pattern, data, "No `show ntp status` command")
+        boot_mode_info = self.extract_info(boot_mode_pattern, data, "No `show boot` command")
 
         hostname = self.get_hostname(running_config)
         ip_address_info, ip_address = self.extract_ip_address_info(running_config, hostname)
-        model_number, serial_number, uptime, software_version = self.extract_version_info(show_version_info)
+        model_number, serial_number, uptime, software_version, boot_mode = self.extract_version_info(show_version_info, boot_mode_info)
         
         total_memory, used_memory = self.extract_memory_info(memory_usage_info)
         total_memory_mb = round(total_memory/(1024**2), 2) if total_memory != "N/A" else "N/A"
@@ -512,7 +516,7 @@ Hostname         : {hostname}
 Model Number     : {model_number}
 Serial Number    : {serial_number}
 Uptime           : {uptime}
-Software Version : {software_version}
+Software Version : {software_version} ({boot_mode})
 
 Memory Usage:
 Total Memory : {total_memory} bytes, {total_memory_mb} MiB
@@ -561,6 +565,8 @@ Inventory Information:
         CSV_DICT["5-second CPU Average"] = cpu_5sec
         CSV_DICT["Cisco Timestamp"] = cisco_datetime
         CSV_DICT["Putty Timestamp"] = putty_datetime
+        CSV_DICT["NTP Status"] = ntp_status
+        CSV_DICT["Boot Mode"] = boot_mode
         CSV_DICT["Inventory Information"] = inventory_dict_list
         self.export_dict_to_csv(CSV_DICT)
     
@@ -617,8 +623,8 @@ Inventory Information:
 
         return cisco_datetime, putty_datetime, ntp_status_msg
 
-    def extract_version_info(self, show_version_output):
-        if show_version_output is None: return "N/A", "N/A", "N/A", "N/A"
+    def extract_version_info(self, show_version_output, boot_mode_output):
+        if show_version_output is None: return "N/A", "N/A", "N/A", "N/A", "N/A"
 
         # Initialize variables/compile regex patterns here
         model_number_pattern = re.compile(r"""
@@ -631,12 +637,14 @@ Inventory Information:
         serial_number_pattern = re.compile(r"System [Ss]erial [Nn]umber\s+:\s+(.+)")
         uptime_pattern = re.compile(r"uptime is\s+(.+?)\n")
         software_version_pattern = re.compile(r"Version (.+?),")
-        serial_number = uptime = software_version = "N/A"
+        boot_mode_pattern = re.compile(r"\:(.+(.conf|.bin))")
+        serial_number = uptime = software_version = boot_mode = "N/A"
 
         model_number_match = model_number_pattern.search(show_version_output)
         serial_number = serial_number_pattern.search(show_version_output)
         uptime = uptime_pattern.search(show_version_output)
         software_version = software_version_pattern.search(show_version_output)
+        boot_mode_match = boot_mode_pattern.search(boot_mode_output)
         
         if model_number_match:
             model_number_match = model_number_pattern.finditer(show_version_output)
@@ -671,8 +679,14 @@ Inventory Information:
             software_version = software_version.group(1)
         else:
             logging.warning(f"MISSING SOFTWARE VERSION IN `show version`")
+        
+        if boot_mode_match:
+            boot_type = boot_mode_match.group(2)
+            boot_mode = "Install Mode" if ".conf" in boot_type else "Bundle Mode"
+        else:
+            logging.warning(f"MISSING BOOT MODE IN `show boot`")
 
-        return model_number, serial_number, uptime, software_version
+        return model_number, serial_number, uptime, software_version, boot_mode
     
     def extract_memory_info(self, memory_usage):
         if memory_usage is None: return "N/A", "N/A"
