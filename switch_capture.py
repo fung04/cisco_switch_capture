@@ -460,6 +460,7 @@ class Catalyst_Switch:
             memory_usage_pattern = re.compile(r"-\sshow process memory(.+?)\n\-{4,}", re.DOTALL)
             file_systems_pattern = re.compile(r"-\sshow file systems(.+?)\n\n\-{4,}", re.DOTALL)
             pnp_stack_pattern = re.compile(r"-\sshow inventory(.+?)\n\n\-{4,}", re.DOTALL)
+            ntp_status_pattern = re.compile(r"#sh(?:ow)? ntp sta(?:tus|tu)?(.+?)#", re.DOTALL)
         else:
             show_version_pattern = re.compile(r"#sh(?:ow)? ver(?:sion)?(.+?)#", re.DOTALL)
             running_config_pattern = re.compile(r"#sh(?:ow)? run(?:ning)?(.+?)#", re.DOTALL)
@@ -482,6 +483,7 @@ class Catalyst_Switch:
         cisco_datatime_info = self.extract_info(cisco_timestamp_pattern, data, "No `show clock` commadn")
         putty_datetime_info = self.extract_info(putty_timestamp_pattern, data, "No `PuTTY log timestamp` in file")
         pnp_stack_info = self.extract_info(pnp_stack_pattern, data, "No `show inventory` command")
+        ntp_status_info = self.extract_info(ntp_status_pattern, data, "No `show ntp status` command")
 
         hostname = self.get_hostname(running_config)
         ip_address_info, ip_address = self.extract_ip_address_info(running_config, hostname)
@@ -498,7 +500,7 @@ class Catalyst_Switch:
         disk_usage_percent = "N/A" if total_disk == "N/A" else f"{round(used_disk/total_disk*100, 2)}%"
 
         cpu_5min, cpu_1min, cpu_5sec = self.extract_cpu_info(cpu_usage_info)
-        cisco_datetime, putty_datetime = self.compare_clocks(putty_datetime_info, cisco_datatime_info)
+        cisco_datetime, putty_datetime, ntp_status = self.compare_clocks(putty_datetime_info, cisco_datatime_info, ntp_status_info)
         inventory_info, inventory_dict_list = self.extract_inventory_info(pnp_stack_info)
 
         # Generate report format
@@ -530,6 +532,7 @@ CPU Usage:
 Timestamps:
 Cisco Timestamp: {cisco_datetime}
 Putty Timestamp: {putty_datetime}
+NTP Status     : {ntp_status}
 
 Inventory Information:
 {inventory_info}
@@ -573,32 +576,46 @@ Inventory Information:
             logging.warning(f"MISSING HOSTNAME IN CONFIG")
 
         return hostname
-
-    def compare_clocks(self, putty_timestamp, cisco_timestamp):
-        if putty_timestamp is None or cisco_timestamp is None: return "N/A", "N/A"
         
+    def compare_clocks(self, putty_timestamp, cisco_timestamp, ntp_status):
+        if putty_timestamp is None or cisco_timestamp is None: return "N/A", "N/A"
+
         # Extract PuTTy timestamp
         putty_timestamp = putty_timestamp.split("\n")[0] # For condition where two PuTTy timestamp is capture
         putty_datetime = datetime.strptime(putty_timestamp, '%Y.%m.%d %H:%M:%S')
 
-        # Initialize variables/compile regex patterns here
+        # Compile regex patterns here
         cisco_time_pattern = re.compile(r"(\d{2}:\d{2}:\d{2}.\d{3} (\w{2,3}) \w{3} \w{3} \d{1,2} \d{4})")
-        cisco_time_match = cisco_time_pattern.search(cisco_timestamp)
+        ntp_status_pattern = re.compile(r"Clock is synchronized, stratum (.+?), reference is (.+?)\n")
 
+        # Search for Cisco timestamp
+        cisco_time_match = cisco_time_pattern.search(ntp_status) if ntp_status else cisco_time_pattern.search(cisco_timestamp)
         if not cisco_time_match:
             logging.warning(f"MISSING CISCO TIMESTAMP IN CONFIG")
             return "N/A", putty_datetime
 
-        cisco_time_str, cisco_tz_match = cisco_time_match.group(1), cisco_time_match.group(2)
-        cisco_tz = cisco_tz_match if cisco_tz_match else "N/A"
-
-        if cisco_tz != "N/A":
-            cisco_format = f'%H:%M:%S.%f {cisco_tz} %a %b %d %Y'
-            cisco_datetime = f"{datetime.strptime(cisco_time_str, cisco_format)} {cisco_tz}"
-            return cisco_datetime, putty_datetime
-        else:
+        cisco_time_str, cisco_tz = cisco_time_match.group(1), cisco_time_match.group(2)
+        if not cisco_tz:
+            cisco_tz = ""
             logging.warning(f"CISCO TIMESTAMP WITHOUT TIMEZONE")
-            return "N/A", putty_datetime
+        
+        # Search for NTP status
+        ntp_status_match = ntp_status_pattern.search(ntp_status) if ntp_status else None
+        if ntp_status_match:
+            ntp_status_stratum = ntp_status_match.group(1)
+            ntp_status_reference = ntp_status_match.group(2).strip()
+            ntp_status_msg  = f"SYNC({ntp_status_stratum}/16), REF: {ntp_status_reference}"
+        else:
+            ntp_status_msg = "NOT SYNC" if ntp_status else "NOT FOUND"
+        
+        # Format Cisco timestamp    
+        cisco_format = f'%H:%M:%S.%f {cisco_tz} %a %b %d %Y'
+        cisco_datetime = datetime.strptime(cisco_time_str, cisco_format)
+        cisco_datetime = datetime.strftime(cisco_datetime, '%Y-%m-%d %H:%M:%S')
+
+        cisco_datetime = f"{cisco_datetime} {cisco_tz}"
+
+        return cisco_datetime, putty_datetime, ntp_status_msg
 
     def extract_version_info(self, show_version_output):
         if show_version_output is None: return "N/A", "N/A", "N/A", "N/A"
