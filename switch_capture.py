@@ -583,7 +583,7 @@ Inventory Information:
         return hostname
         
     def compare_clocks(self, putty_timestamp, cisco_timestamp, ntp_status):
-        if putty_timestamp is None or cisco_timestamp is None: return "N/A", "N/A"
+        if putty_timestamp is None or cisco_timestamp is None: return "N/A", "N/A", "N/A"
 
         # Extract PuTTy timestamp
         putty_timestamp = putty_timestamp.split("\n")[0] # For condition where two PuTTy timestamp is capture
@@ -594,10 +594,10 @@ Inventory Information:
         ntp_status_pattern = re.compile(r"Clock is synchronized, stratum (.+?), reference is (.+?)\n")
 
         # Search for Cisco timestamp
-        cisco_time_match = cisco_time_pattern.search(ntp_status) if ntp_status else cisco_time_pattern.search(cisco_timestamp)
+        cisco_time_match = cisco_time_pattern.search(ntp_status) if ntp_status is None else cisco_time_pattern.search(cisco_timestamp)
         if not cisco_time_match:
             logging.warning(f"MISSING CISCO TIMESTAMP IN CONFIG")
-            return "N/A", putty_datetime
+            return "N/A", putty_datetime, "N/A"
 
         cisco_time_str, cisco_tz = cisco_time_match.group(1), cisco_time_match.group(2)
         if not cisco_tz:
