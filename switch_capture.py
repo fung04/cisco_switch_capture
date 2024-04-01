@@ -594,7 +594,7 @@ Inventory Information:
         ntp_status_pattern = re.compile(r"Clock is synchronized, stratum (.+?), reference is (.+?)\n")
 
         # Search for Cisco timestamp
-        cisco_time_match = cisco_time_pattern.search(ntp_status) if ntp_status is None else cisco_time_pattern.search(cisco_timestamp)
+        cisco_time_match = cisco_time_pattern.search(ntp_status) if ntp_status is not None else cisco_time_pattern.search(cisco_timestamp)
         if not cisco_time_match:
             logging.warning(f"MISSING CISCO TIMESTAMP IN CONFIG")
             return "N/A", putty_datetime, "N/A"
@@ -643,7 +643,7 @@ Inventory Information:
         serial_number = serial_number_pattern.search(show_version_output)
         uptime = uptime_pattern.search(show_version_output)
         software_version = software_version_pattern.search(show_version_output)
-        boot_mode_match = boot_mode_pattern.search(boot_mode_output)
+        boot_mode_match = boot_mode_pattern.search(boot_mode_output) if boot_mode_output is not None else None
         
         if model_number_match:
             model_number_match = model_number_pattern.finditer(show_version_output)
