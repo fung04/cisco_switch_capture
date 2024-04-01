@@ -94,19 +94,23 @@ class Nexus_Switch:
         model_number, serial_number, uptime, software_version = self.extract_version_info(show_version)
         
         total_memory, used_memory = self.extract_memory_info(show_sysresources)
-        total_memory_mb = round(total_memory/1024, 2) if total_memory != "N/A" else "N/A"
-        used_memory_mb = round(used_memory/1024, 2) if used_memory != "N/A" else "N/A"
-        memory_usage_percent = "N/A" if total_memory == "N/A" else f"{round(used_memory/total_memory*100, 2)}%"
+        total_memory_mb = f"{round(total_memory/1024, 2):.2f}" if total_memory != "N/A" else "N/A"
+        used_memory_mb = f"{round(used_memory/1024, 2):.2f}" if used_memory != "N/A" else "N/A"
+        memory_usage_percent = "N/A" if total_memory == "N/A" else f"{round(used_memory/total_memory*100, 2):.2f}%"
 
         total_disk, used_disk = self.extract_disk_info(dir_info)
-        total_disk_mb = round(total_disk/(1024**2), 2) if total_disk != "N/A" else "N/A"
-        used_disk_mb = round(used_disk/(1024**2), 2) if used_disk != "N/A" else "N/A"
-        disk_usage_percent = "N/A" if total_disk == "N/A" else f"{round(used_disk/total_disk*100, 2)}%"
+        total_disk_mb = f"{round(total_disk/(1024**2), 2):.2f}" if total_disk != "N/A" else "N/A"
+        used_disk_mb = f"{round(used_disk/(1024**2), 2):.2f}" if used_disk != "N/A" else "N/A"
+        disk_usage_percent = "N/A" if total_disk == "N/A" else f"{round(used_disk/total_disk*100, 2):.2f}%"
 
         cisco_datetime, putty_datetime = self.compare_clocks(running_config, putty_timestamp)
         cpu_5min, cpu_1min, cpu_5sec, cpu_utlization = self.extract_cpu_info(show_processcpu)
         inventory_info, inventory_dict_list = self.extract_inventory_info(show_inventory)
         
+        total_memory, used_memory = self.align_right(total_memory, used_memory)
+        total_memory_mb, used_memory_mb = self.align_right(total_memory_mb, used_memory_mb)
+        total_disk, used_disk = self.align_right(total_disk, used_disk)
+        total_disk_mb, used_disk_mb = self.align_right(total_disk_mb, used_disk_mb)
         
         report_format = f"""=~=~=~=~=~=~=~=~=~=~=~==~=~=~=~=~=~=~=~=~=~=~=
 Report for File : {file}
@@ -119,24 +123,24 @@ Uptime           : {uptime}
 Software Version : {software_version}
 
 Memory Usage:
-Total Memory : {total_memory} K, {total_memory_mb} MiB
-Used Memory  : {used_memory} K, {used_memory_mb} MiB
-Percent Used : {memory_usage_percent}
+Total Memory     : {total_memory} K, {total_memory_mb} MiB
+Used Memory      : {used_memory} K, {used_memory_mb} MiB
+Percent Used     : {memory_usage_percent}
 
 Disk Usage:
-Total Disk      : {total_disk} bytes, {total_disk_mb} MiB
-Used Disk       : {used_disk} bytes, {used_disk_mb} MiB
-Percent Used    : {disk_usage_percent}
+Total Disk       : {total_disk} bytes, {total_disk_mb} MiB
+Used Disk        : {used_disk} bytes, {used_disk_mb} MiB
+Percent Used     : {disk_usage_percent}
 
 CPU Usage:
-5-minute Average: {cpu_5min}
-1-minute Average: {cpu_1min}
-5-second Average: {cpu_5sec}
-Cpu Utlization  : {cpu_utlization}%
+5-minute Average : {cpu_5min}
+1-minute Average : {cpu_1min}
+5-second Average : {cpu_5sec}
+Cpu Utlization   : {cpu_utlization}%
 
 Timestamps:
-Cisco Timestamp: {cisco_datetime}
-Putty Timestamp: {putty_datetime}
+Cisco Timestamp  : {cisco_datetime}
+Putty Timestamp  : {putty_datetime}
 
 Inventory Information:
 {inventory_info}
@@ -166,6 +170,11 @@ Inventory Information:
         CSV_DICT["Putty Timestamp"] = putty_datetime
         CSV_DICT["Inventory Information"] = inventory_dict_list
         self.export_dict_to_csv(CSV_DICT)
+
+    def align_right(self, value1, value2):
+        max_len = max(len(str(value1)), len(str(value2))) 
+        # :> right align, :< left align, :^ center align
+        return f"{value1:>{max_len}}", f"{value2:>{max_len}}"
 
     def get_hostname(self, running_config):
         if running_config is None: return "N/A"
@@ -493,18 +502,23 @@ class Catalyst_Switch:
         model_number, serial_number, uptime, software_version, boot_mode = self.extract_version_info(show_version_info, boot_mode_info)
         
         total_memory, used_memory = self.extract_memory_info(memory_usage_info)
-        total_memory_mb = round(total_memory/(1024**2), 2) if total_memory != "N/A" else "N/A"
-        used_memory_mb = round(used_memory/(1024**2), 2) if used_memory != "N/A" else "N/A"
-        memory_usage_percent = "N/A" if total_memory == "N/A" else f"{round(used_memory/total_memory*100, 2)}%"
+        total_memory_mb = f"{round(total_memory/(1024**2), 2):.2f}" if total_memory != "N/A" else "N/A"
+        used_memory_mb = f"{round(used_memory/(1024**2), 2):.2f}" if used_memory != "N/A" else "N/A"
+        memory_usage_percent = "N/A" if total_memory == "N/A" else f"{round(used_memory/total_memory*100, 2):.2f}%"
 
         total_disk, used_disk, disk_type = self.extract_disk_info(disk_usage_info, dir_info)
-        total_disk_mb = round(total_disk/1024**2, 2) if total_disk != "N/A" else "N/A"
-        used_disk_mb = round(used_disk/1024**2, 2) if used_disk != "N/A" else "N/A"
-        disk_usage_percent = "N/A" if total_disk == "N/A" else f"{round(used_disk/total_disk*100, 2)}%"
+        total_disk_mb = f"{round(total_disk/1024**2, 2):.2f}" if total_disk != "N/A" else "N/A"
+        used_disk_mb = f"{round(used_disk/1024**2, 2):.2f}" if used_disk != "N/A" else "N/A"
+        disk_usage_percent = "N/A" if total_disk == "N/A" else f"{round(used_disk/total_disk*100, 2):.2f}%"
 
         cpu_5min, cpu_1min, cpu_5sec = self.extract_cpu_info(cpu_usage_info)
         cisco_datetime, putty_datetime, ntp_status = self.compare_clocks(putty_datetime_info, cisco_datatime_info, ntp_status_info)
         inventory_info, inventory_dict_list = self.extract_inventory_info(pnp_stack_info)
+
+        total_memory, used_memory = self.align_right(total_memory, used_memory)
+        total_memory_mb, used_memory_mb = self.align_right(total_memory_mb, used_memory_mb)
+        total_disk, used_disk = self.align_right(total_disk, used_disk)
+        total_disk_mb, used_disk_mb = self.align_right(total_disk_mb, used_disk_mb)
 
         # Generate report format
         report_format = f"""=~=~=~=~=~=~=~=~=~=~=~==~=~=~=~=~=~=~=~=~=~=~=
@@ -518,24 +532,24 @@ Uptime           : {uptime}
 Software Version : {software_version} ({boot_mode})
 
 Memory Usage:
-Total Memory : {total_memory} bytes, {total_memory_mb} MiB
-Used Memory  : {used_memory} bytes, {used_memory_mb} MiB
-Percent Used : {memory_usage_percent}
+Total Memory     : {total_memory} bytes, {total_memory_mb} MiB
+Used Memory      : {used_memory} bytes, {used_memory_mb} MiB
+Percent Used     : {memory_usage_percent}
 
 Disk Usage: ({disk_type})
-Total Disk      : {total_disk} bytes, {total_disk_mb} MiB
-Used Disk       : {used_disk} bytes, {used_disk_mb} MiB
-Percent Used    : {disk_usage_percent}
+Total Disk       : {total_disk} bytes, {total_disk_mb} MiB
+Used Disk        : {used_disk} bytes, {used_disk_mb} MiB
+Percent Used     : {disk_usage_percent}
 
 CPU Usage:
-5-minute Average: {cpu_5min}
-1-minute Average: {cpu_1min}
-5-second Average: {cpu_5sec}
+5-minute Average : {cpu_5min}
+1-minute Average : {cpu_1min}
+5-second Average : {cpu_5sec}
 
 Timestamps:
-Cisco Timestamp: {cisco_datetime}
-Putty Timestamp: {putty_datetime}
-NTP Status     : {ntp_status}
+Cisco Timestamp  : {cisco_datetime}
+Putty Timestamp  : {putty_datetime}
+NTP Status       : {ntp_status}
 
 Inventory Information:
 {inventory_info}
@@ -568,6 +582,11 @@ Inventory Information:
         CSV_DICT["Boot Mode"] = boot_mode
         CSV_DICT["Inventory Information"] = inventory_dict_list
         self.export_dict_to_csv(CSV_DICT)
+    
+    def align_right(self, value1, value2):
+        max_len = max(len(str(value1)), len(str(value2))) 
+        # :> right align, :< left align, :^ center align
+        return f"{value1:>{max_len}}", f"{value2:>{max_len}}"
     
     def get_hostname(self, running_config):
         if running_config is None: return "N/A"
@@ -1139,21 +1158,21 @@ Uptime           : {wlc_dict['Uptime']}
 Software Version : {wlc_dict['Software Version']}
 
 Memory Usage:
-Total Memory : {wlc_dict["Total Memory"]} MB
-Used Memory  : {wlc_dict["Used Memory"]} MB
-Percent Used : {wlc_dict["Memory Percent Used"]}%
+Total Memory     : {wlc_dict["Total Memory"]} MB
+Used Memory      : {wlc_dict["Used Memory"]} MB
+Percent Used     : {wlc_dict["Memory Percent Used"]}%
 
 Disk Usage:
-Total Disk      : {wlc_dict["Total Disk"]} MB
-Used Disk       : {wlc_dict["Used Disk"]} MB
-Percent Used    : {wlc_dict["Disk Percent Used"]}%
+Total Disk       : {wlc_dict["Total Disk"]} MB
+Used Disk        : {wlc_dict["Used Disk"]} MB
+Percent Used     : {wlc_dict["Disk Percent Used"]}%
 
 CPU Usage:
-Cpu Utlization  : {wlc_dict["CPU Average"]}%
+Cpu Utlization   : {wlc_dict["CPU Average"]}%
 
 Timestamps:
-Cisco Timestamp: {wlc_dict["Cisco Timestamp"]}
-Putty Timestamp: {wlc_dict["Putty Timestamp"]}
+Cisco Timestamp  : {wlc_dict["Cisco Timestamp"]}
+Putty Timestamp  : {wlc_dict["Putty Timestamp"]}
 ---
 
 """
