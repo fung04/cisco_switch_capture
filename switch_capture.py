@@ -2,6 +2,7 @@ import re
 import os
 import csv
 import logging
+import traceback
 from datetime import datetime
 
 SERIAL_NUMBER_LIST = []
@@ -1288,6 +1289,9 @@ if __name__ == "__main__":
         except FileNotFoundError:
             logging.error(f"FILE NOT FOUND [{file}], CHECK PATH LENGTH LIMIT")
             unknown_file.append(file)
+        except Exception as e:
+            logging.error(f"ERROR IN FILE [{file}]: {e}")
+            logging.error(traceback.format_exc())
         
     logging.debug("\n"+"-"*50)
     for file in unknown_file:
