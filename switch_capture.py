@@ -611,10 +611,12 @@ Inventory Information:
 
         # Compile regex patterns here
         cisco_time_pattern = re.compile(r"(\d{2}:\d{2}:\d{2}.\d{3} (\w{2,3}) \w{3} \w{3} \d{1,2} \d{4})")
-        ntp_status_pattern = re.compile(r"Clock is synchronized, stratum (.+?), reference is (.+?)\n")
+        ntp_status_pattern = re.compile(r"Clock is (synchronized|unsynchronized), stratum (.+?), (?:no reference clock\n|reference is (.+?)\n)")
 
         # Search for Cisco timestamp
-        cisco_time_match = cisco_time_pattern.search(ntp_status) if ntp_status is not None else cisco_time_pattern.search(cisco_timestamp)
+        cisco_time_match = cisco_time_pattern.search(cisco_timestamp)
+        ntp_time_match = ntp_status_pattern.search(ntp_status) if ntp_status is not None else None
+        
         if not cisco_time_match:
             logging.warning(f"MISSING CISCO TIMESTAMP IN CONFIG")
             return "N/A", putty_datetime, "N/A"
@@ -625,13 +627,16 @@ Inventory Information:
             logging.warning(f"CISCO TIMESTAMP WITHOUT TIMEZONE")
         
         # Search for NTP status
-        ntp_status_match = ntp_status_pattern.search(ntp_status) if ntp_status else None
-        if ntp_status_match:
-            ntp_status_stratum = ntp_status_match.group(1)
-            ntp_status_reference = ntp_status_match.group(2).strip()
-            ntp_status_msg  = f"SYNC({ntp_status_stratum}/16), REF: {ntp_status_reference}"
+        if ntp_time_match:
+            ntp_status_sync = ntp_time_match.group(1)
+            if ntp_status_sync == "unsynchronized":
+                ntp_status_msg = "NOT SYNC"
+            else:
+                ntp_status_stratum = ntp_time_match.group(2)
+                ntp_status_reference = ntp_time_match.group(3).strip()
+                ntp_status_msg  = f"SYNC({ntp_status_stratum}/16), REF: {ntp_status_reference}"
         else:
-            ntp_status_msg = "NOT SYNC" if ntp_status else "NOT FOUND"
+            ntp_status_msg = "NOT FOUND"
         
         # Format Cisco timestamp    
         cisco_format = f'%H:%M:%S.%f {cisco_tz} %a %b %d %Y'
