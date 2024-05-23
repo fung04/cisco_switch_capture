@@ -752,7 +752,7 @@ Inventory Information:
             disk_usage_match = disk_usage_pattern.search(disk_usage)
             if disk_usage_match:
                 total_memory = int(disk_usage_match[1])
-                used_memory = int(disk_usage_match[2])
+                used_memory = total_memory - int(disk_usage_match[2])
                 disk_type = disk_usage_match[3]
         elif dir_info:
             dir_info_match = dir_info_pattern.search(dir_info)
