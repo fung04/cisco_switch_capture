@@ -221,12 +221,12 @@ Inventory Information:
         show_version_pattern = re.compile(r"""
                      (?:Processor\sBoard\sID (?P<serial_number>.*)|
                      Kernel\suptime\sis(?P<uptime>.*)|
-                     NXOS:\s(?P<software_version>.*)|
-                     Hardware\n(?P<model_number>.*))""",re.VERBOSE)
+                     NXOS:\sversion\s(?P<software_version>.*)|
+                     Hardware\n\s+cisco\s(?P<model_number>.*))""",re.VERBOSE)
         
         show_version_matches = show_version_pattern.search(show_version_output)
 
-        if show_version_matches:
+        if show_version_matches:    
             show_version_matches = show_version_pattern.finditer(show_version_output)
             for match in show_version_matches:
                 model_number = match.group("model_number") or model_number
@@ -234,7 +234,7 @@ Inventory Information:
                 uptime = match.group("uptime") or uptime
                 software_version = match.group("software_version") or software_version
         
-        uptime = uptime.strip() if uptime != "N/A" else "N/A"
+        uptime = re.sub(r"[\(|\)]+","",uptime.strip()) if uptime != "N/A" else "N/A"
         software_version = software_version.strip() if software_version != "N/A" else "N/A"
         model_number = model_number.strip() if model_number != "N/A" else "N/A"
         serial_number = serial_number.strip() if serial_number != "N/A" else "N/A"
@@ -654,13 +654,12 @@ Inventory Information:
         model_number_pattern = re.compile(r"""
                     (?:
                     Model [Nn]umber\s+:\s+(?P<model_type_1>.+?)\n|
-                    cisco\s(?P<model_type_2>.*?)\s|
-                    License\sInformation\sfor\s\'(?P<model_coreswitch>.*?)\'\n|
-                    Cisco\s(?P<model_type_3>.*?)\s                      
+                    cisco\s(?P<model_type_2>[^,]+?)\s|
+                    License\sInformation\sfor\s\'(?P<model_coreswitch>.*?)\'\n
                     )""",re.VERBOSE)
         serial_number_pattern = re.compile(r"System [Ss]erial [Nn]umber\s+:\s+(.+)")
         uptime_pattern = re.compile(r"uptime is\s+(.+?)\n")
-        software_version_pattern = re.compile(r"Version (.+?),")
+        software_version_pattern = re.compile(r"Version (.+?)(,| )")
         boot_mode_pattern = re.compile(r"\:(.+(.conf|.bin))")
         serial_number = uptime = software_version = boot_mode = "N/A"
 
@@ -673,7 +672,7 @@ Inventory Information:
         if model_number_match:
             model_number_match = model_number_pattern.finditer(show_version_output)
             for match in model_number_match:
-                model_number = match.group("model_type_1") or match.group("model_coreswitch") or match.group("model_type_2") or match.group("model_type_3")
+                model_number = match.group("model_type_1") or match.group("model_coreswitch") or match.group("model_type_2")
         else:
             model_number = "N/A"
             logging.warning(f"MISSING MODEL NUMBER IN `show version`")
