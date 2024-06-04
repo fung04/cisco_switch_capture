@@ -963,7 +963,8 @@ class Cisco_WLC:
         
         wlc_dict = WLC_INFO_DICT.copy()
         wlc_dict["File Name"] = file
-        wlc_dict["Putty Timestamp"] = datetime.strptime(putty_timestamp, "%Y.%m.%d %H:%M:%S")
+        putty_timestamp = putty_timestamp.split("\n")[0] if putty_timestamp else None
+        wlc_dict["Putty Timestamp"] = datetime.strptime(putty_timestamp, "%Y.%m.%d %H:%M:%S") if putty_timestamp else "N/A"
         wlc_dict = self.extract_wlc_showrun(wlc_show_run, wlc_dict)
         wlc_dict = self.extract_wlc_cpu(wlc_cpu_info, wlc_dict)
         wlc_dict = self.extract_wlc_memory(wlc_memory_info, wlc_dict)
