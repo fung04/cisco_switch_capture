@@ -70,6 +70,7 @@ AP_INFO_DICT = {
 
 class Nexus_Switch:
     def __init__(self, data):
+
         # All regular expressions here
         show_tech_match = re.search(r"#\s+sh(?:ow)? tech", data)
         putty_timestamp_pattern = re.compile(r"(?:PuTTY|MobaXterm) log (\d{4}\.\d{2}.\d{2} \d{2}:\d{2}:\d{2})")
@@ -557,7 +558,7 @@ Inventory Information:
 ---
 
 """
-    
+        
         self.export_report(report_format)
         
         CSV_DICT = EXPORT_CSV_DICT.copy()
@@ -636,6 +637,7 @@ Inventory Information:
                 ntp_status_reference = ntp_time_match.group(3).strip()
                 ntp_status_msg  = f"SYNC({ntp_status_stratum}/16), REF: {ntp_status_reference}"
         else:
+            logging.warning(f"MISSING NTP STATUS INFO")
             ntp_status_msg = "NOT FOUND"
         
         # Format Cisco timestamp    
@@ -1261,7 +1263,6 @@ if __name__ == "__main__":
 
     unknown_file = []
     processed_file = []
-    export_csv_dict_list = []
     total_file = len(files)
     nxos_switch_pattern = re.compile(r"!Command:")
     ios_switch_pattern = re.compile(r"[Cc]isco IOS")
@@ -1296,7 +1297,7 @@ if __name__ == "__main__":
             unknown_file.append(file)
         except Exception as e:
             logging.error(f"ERROR IN FILE [{file}]: {e}")
-            logging.error(traceback.format_exc())
+            logging.error(f"\n {traceback.format_exc()}")
         
     logging.debug("\n"+"-"*50)
     for file in unknown_file:
