@@ -461,30 +461,30 @@ class Catalyst_Switch:
 
         # All regular expressions here
         show_tech_match = re.search(r"#sh(?:ow)? tech", data)
+        show_ap_config_match = re.search(r"#sh(?:ow)? ap config general|-\sshow ap config general", data)
+        
         putty_timestamp_pattern = re.compile(r"(?:PuTTY|MobaXterm) log (\d{4}\.\d{2}.\d{2} \d{2}:\d{2}:\d{2})")
         directory_pattern = re.compile(r"\#dir(.+?)\#", re.DOTALL)
         ntp_status_pattern = re.compile(r"#sh(?:ow)? ntp sta(?:tus|tu)?(.+?)#", re.DOTALL)
         boot_mode_pattern = re.compile(r"#sh(?:ow)? boot(.+?)#", re.DOTALL)
 
-        if show_tech_match:
-            # require show tech to be run
-            show_version_pattern = re.compile(r"-\sshow version(.+?)\n\n\n\-{4,}", re.DOTALL)
-            running_config_pattern = re.compile(r"-\sshow running-config(.+?)\n\-{4,}", re.DOTALL)
-            cisco_timestamp_pattern = re.compile(r"-\sshow clock(.+?)\n\-{4,}", re.DOTALL)
-            cpu_usage_pattern = re.compile(r"-\sshow process cpu(.+?)\n\n\-{4,}", re.DOTALL)
-            memory_usage_pattern = re.compile(r"-\sshow process memory(.+?)\n\-{4,}", re.DOTALL)
-            file_systems_pattern = re.compile(r"-\sshow file systems(.+?)\n\n\-{4,}", re.DOTALL)
-            pnp_stack_pattern = re.compile(r"-\sshow inventory(.+?)\n\n\-{4,}", re.DOTALL)
+        show_version_pattern = re.compile(r"(#sh(?:ow)? ver(?:sion)?.+?#|-\sshow version.+?\n\n\n\-{4,})", re.DOTALL)
+        running_config_pattern = re.compile(r"(#sh(?:ow)? run(?:ning)?.+?#|-\sshow running-config.+?\n\-{4,})", re.DOTALL)
+        cisco_timestamp_pattern = re.compile(r"(#sh(?:ow)? clock.+?#|-\sshow clock.+?\n\-{4,})", re.DOTALL)
+        cpu_usage_pattern = re.compile(r"(#sh(?:ow)? process cpu.+?#|-\sshow process cpu.+?\n\n\-{4,})", re.DOTALL)
+        memory_usage_pattern = re.compile(r"(#sh(?:ow)? process memory.+?#|-\sshow process memory.+?\n\-{4,})", re.DOTALL)
+        file_systems_pattern = re.compile(r"(#sh(?:ow)? file system(?:s)?.+?#|-\sshow file systems.+?\n\n\-{4,})", re.DOTALL)
+        pnp_stack_pattern = re.compile(r"(#sh(?:ow)? inv(?:entory)?.+?#|-\sshow inventory.+?\n\n\-{4,})", re.DOTALL)
+        show_ap_config_pattern = re.compile(r"(#sh(?:ow)? ap config general.+?#|-\sshow ap config general.+?\n\n\-{4,})", re.DOTALL)
+
+        if show_ap_config_match and show_tech_match:
+            logging.info(f" IOS Switch : {file} (show tech) (Cisco WLC)")
+        elif show_ap_config_match:
+            logging.info(f" IOS Switch : {file} (Cisco WLC)")
+        elif show_tech_match:
+            logging.info(f" IOS Switch : {file} (show tech)")
         else:
-            show_version_pattern = re.compile(r"#sh(?:ow)? ver(?:sion)?(.+?)#", re.DOTALL)
-            running_config_pattern = re.compile(r"#sh(?:ow)? run(?:ning)?(.+?)#", re.DOTALL)
-            cisco_timestamp_pattern = re.compile(r"#sh(?:ow)? clock(.+?)#", re.DOTALL)
-            cpu_usage_pattern = re.compile(r"#sh(?:ow)? process cpu(.+?)#", re.DOTALL)
-            memory_usage_pattern = re.compile(r"#sh(?:ow)? process memory(.+?)#", re.DOTALL)
-            file_systems_pattern = re.compile(r"#sh(?:ow)? file system(?:s)?(.+?)#", re.DOTALL)
-            pnp_stack_pattern = re.compile(r"#sh(?:ow)? inv(?:entory)?(.+?)#", re.DOTALL)
-        
-        logging.info(f" IOS Switch : {file} (show tech)" if show_tech_match else f" IOS Switch : {file}")
+            logging.info(f" IOS Switch : {file}")
 
         # Extract information from the file
         running_config = self.extract_info(running_config_pattern, data, "No `show running config` command")
@@ -498,6 +498,13 @@ class Catalyst_Switch:
         pnp_stack_info = self.extract_info(pnp_stack_pattern, data, "No `show inventory` command")
         ntp_status_info = self.extract_info(ntp_status_pattern, data, "No `show ntp status` command")
         boot_mode_info = self.extract_info(boot_mode_pattern, data, "No `show boot` command")
+        
+        if show_ap_config_match:
+            show_ap_config_info = self.extract_info(show_ap_config_pattern, data, "No `show ap config general` command")
+            ap_list = self.extract_ap_info(show_ap_config_info)
+            ap_list_report, ap_list_report_header = self.format_ap_list(ap_list) if ap_list else (None, None)
+        
+        ap_info = f"\n\nAP Information:\n{ap_list_report_header}\n{chr(10).join(ap_list_report)}" if ap_list_report else ""
 
         hostname = self.get_hostname(running_config)
         ip_address_info, ip_address = self.extract_ip_address_info(running_config, hostname)
@@ -554,7 +561,7 @@ Putty Timestamp  : {putty_datetime}
 NTP Status       : {ntp_status}
 
 Inventory Information:
-{inventory_info}
+{inventory_info}{ap_info}
 ---
 
 """
@@ -871,6 +878,58 @@ Inventory Information:
                 return f"\nNO SSH SOURCE INTERFACE, SHOW ALL MATCH:\n{'-.'*16}\n{ip_address_info}\n{'-.'*16}\n", 'N/A'
         else:
             return "N/A", "N/A"
+
+    def extract_ap_info(self, show_ap_config_info):
+        ap_list = []
+
+        ap_info_pattern = re.compile(r"(Cisco AP Name   :(?:.|\n)*?)(?=\nCisco AP Name   : |\Z)")
+        ap_model_pattern = re.compile(r"AP Model\s+: (.*)?")
+        ap_ip_address_pattern = re.compile(r"IP Address\s+: (.*)?")
+        ap_serial_pattern = re.compile(r"AP Serial Number\s+: (.*)?")
+        ap_uptime_pattern = re.compile(r"AP Up Time\s+: (.*)?")
+        ap_name_pattern = re.compile(r"Cisco AP Name\s+: ?(.*)?")
+
+        ap_info_matches = ap_info_pattern.findall(show_ap_config_info)
+
+        if ap_info_matches:
+            for ap_info in ap_info_matches:
+                ap_dict = AP_INFO_DICT.copy()
+                ap_dict["Model"] = ap_model_pattern.search(ap_info).group(1)
+                ap_dict["IP Address"] = ap_ip_address_pattern.search(ap_info).group(1)
+                ap_dict["Serial Number"] = ap_serial_pattern.search(ap_info).group(1)
+                ap_dict["Uptime"] = ap_uptime_pattern.search(ap_info).group(1)
+                ap_dict["AP Name"] = ap_name_pattern.search(ap_info).group(1)
+
+                ap_list.append(ap_dict)
+            
+            with open(f"{CISCO_WLC_AP_FILE_NAME}", "a", newline='') as f:
+                f.write(f"{file}\n")
+                writer = csv.DictWriter(f, fieldnames=AP_INFO_DICT.keys())
+                writer.writeheader()
+                writer.writerows(ap_list)
+
+        else:
+            logging.warning(f"MISSING AP INFO IN CONFIG")
+        
+        return ap_list 
+    
+    def format_ap_list(self, ap_list):
+        # Sort the access points by IP address
+        ap_list = sorted(ap_list, key=lambda x: [int(c) if c.isdigit() else c.lower() for c in re.split('([0-9]+)', x['IP Address'])])
+
+        # Determine the maximum width for each field, including the header fields
+        fields = ['Model', 'IP Address', 'Serial Number', 'AP Name', 'Uptime']
+        max_widths = {field: max(len(ap[field]) for ap in ap_list + [{field: field}]) for field in fields}
+
+        # Create the format string for the data and the header
+        format_string = ",  ".join([f"{{:<{max_widths[field]}}}" for field in fields])
+        header_format_string = "   ".join([f"{{:<{max_widths[field]}}}" for field in fields])
+
+        # Generate the report lines
+        ap_list_report = [format_string.format(ap['Model'], ap['IP Address'], ap['Serial Number'] ,ap['AP Name'], ap['Uptime']) for ap in ap_list]
+        ap_list_report_header = header_format_string.format(*fields)
+
+        return ap_list_report, ap_list_report_header
 
     def extract_info(self, pattern, file_data, error_message):
         try:
