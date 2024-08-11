@@ -797,7 +797,7 @@ Inventory Information:
         inventory_dict_list = []
 
         inventory_pattern = re.compile(r"NAME:\s+(.+?),\s+(.+?)\nPID:\s+(.+?),(.+?)SN:\s(.+?)\n")
-        switch_keyworad_pattern = re.compile(r"\"(?:\d{1,2}|Switch\s+\d{1,2}|Switch\d{0,2}\s+System|Switch\s\d{1,2}\s+Chassis|Chassis|Chassis \d{1,2})\"")
+        switch_keyworad_pattern = re.compile(r"\"(?:\d{1,2}|Switch\s+\d{1,2}|Switch\d{0,2}\s+System|Switch\s\d{1,2}\s+Chassis|Chassis|.+?CHASSIS|Chassis \d{1,2})\"")
         
         try:
             inventory_matches = inventory_pattern.findall(show_inventory)
@@ -821,7 +821,7 @@ Inventory Information:
                         
                         
                         inventory_dict_list.append(inventory_dict)
-                        inventory_list.append(f"Name: {inventory[0].replace('"', '')}, PID: {inventory[2].strip()}, SN: {inventory[4].strip()}")
+                        inventory_list.append(f"""Name: {inventory[0].replace('"', '')}, PID: {inventory[2].strip()}, SN: {inventory[4].strip()}""")
         inventory_str = "\n".join(inventory_list)
 
         if inventory_str == "":
