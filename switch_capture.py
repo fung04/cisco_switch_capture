@@ -1253,11 +1253,11 @@ if __name__ == "__main__":
     files.sort(key=lambda x: [int(c) if c.isdigit() else c.lower() for c in re.split('([0-9]+)', x)]) # Natural Sort Function
 
     # create csv file header
-    with open(f"{IOS_SWITCH_CSV_FILE_NAME}", 'a', newline='') as csv_file:
+    with open(f"{IOS_SWITCH_CSV_FILE_NAME}", 'w', newline='') as csv_file:
         writer = csv.writer(csv_file)
         writer.writerow(EXPORT_CSV_DICT.keys())
 
-    with open(f"{NXOS_SWITCH_CSV_FILE_NAME}", 'a', newline='') as csv_file:
+    with open(f"{NXOS_SWITCH_CSV_FILE_NAME}", 'w', newline='') as csv_file:
         writer = csv.writer(csv_file)
         writer.writerow(EXPORT_CSV_DICT.keys())
 
