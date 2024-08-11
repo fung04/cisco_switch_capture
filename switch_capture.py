@@ -977,6 +977,24 @@ class Cisco_WLC:
         ap_info_dict_list = self.extract_ap_inventory(wlc_ap_inventory, ap_info_dict_list)
 
         self.export_report(wlc_dict, ap_info_dict_list)
+    
+    def format_ap_list(self, ap_list):
+        # Sort the access points by IP address
+        ap_list = sorted(ap_list, key=lambda x: [int(c) if c.isdigit() else c.lower() for c in re.split('([0-9]+)', x['IP Address'])])
+
+        # Determine the maximum width for each field, including the header fields
+        fields = ['Model', 'IP Address', 'Serial Number', 'AP Name', 'Uptime']
+        max_widths = {field: max(len(ap[field]) for ap in ap_list + [{field: field}]) for field in fields}
+
+        # Create the format string for the data and the header
+        format_string = ",  ".join([f"{{:<{max_widths[field]}}}" for field in fields])
+        header_format_string = "   ".join([f"{{:<{max_widths[field]}}}" for field in fields])
+
+        # Generate the report lines
+        ap_list_report = [format_string.format(ap['Model'], ap['IP Address'], ap['Serial Number'], ap['AP Name'], ap['Uptime']) for ap in ap_list]
+        ap_list_report_header = header_format_string.format(*fields)
+
+        return ap_list_report, ap_list_report_header
 
     def extract_wlc_showrun(self, data, wlc_dict):
         if data is None: return wlc_dict
@@ -1154,6 +1172,10 @@ class Cisco_WLC:
         return ap_list
 
     def export_report(self, wlc_dict, ap_list):
+
+        ap_list_report, ap_list_report_header = self.format_ap_list(ap_list)
+        ap_info = f"{ap_list_report_header}\n{chr(10).join(ap_list_report)}" if ap_list_report else "N/A"
+        
         # export in two report, one for wlc txt, one for ap csv
         report_format = f"""=~=~=~=~=~=~=~=~=~=~=~==~=~=~=~=~=~=~=~=~=~=~=
 Report for File : {file}
@@ -1181,6 +1203,9 @@ Cpu Utlization   : {wlc_dict["CPU Average"]}%
 Timestamps:
 Cisco Timestamp  : {wlc_dict["Cisco Timestamp"]}
 Putty Timestamp  : {wlc_dict["Putty Timestamp"]}
+
+AP Information   :
+{ap_info}
 ---
 
 """
