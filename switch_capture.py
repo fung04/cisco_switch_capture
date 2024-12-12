@@ -622,14 +622,20 @@ Inventory Information:
         ntp_status_pattern = re.compile(r"Clock is (synchronized|unsynchronized), stratum (.+?), (?:no reference clock\n|reference is (.+?)\n)")
 
         # Search for Cisco timestamp
-        cisco_time_match = cisco_time_pattern.search(cisco_timestamp)
+        cisco_time_match = cisco_time_pattern.findall(cisco_timestamp)
         ntp_time_match = ntp_status_pattern.search(ntp_status) if ntp_status is not None else None
         
         if not cisco_time_match:
             logging.warning(f"MISSING CISCO TIMESTAMP IN CONFIG")
-            return "N/A", putty_datetime, "N/A"
+            cisco_datetime = "N/A"
 
-        cisco_time_str, cisco_tz = cisco_time_match.group(1), cisco_time_match.group(2)
+        if cisco_time_match and len(cisco_time_match) > 1 and isinstance(cisco_time_match[1], tuple):
+            cisco_time_str, cisco_tz = cisco_time_match[1][0], cisco_time_match[1][1]
+        else:
+            cisco_time_str, cisco_tz = cisco_time_match[0][0], cisco_time_match[0][1]
+        
+        # cisco_time_str, cisco_tz = cisco_time_match.group(1), cisco_time_match.group(2)
+
         if not cisco_tz:
             cisco_tz = ""
             logging.warning(f"CISCO TIMESTAMP WITHOUT TIMEZONE")
