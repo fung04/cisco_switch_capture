@@ -503,9 +503,11 @@ class Catalyst_Switch:
             show_ap_config_info = self.extract_info(show_ap_config_pattern, data, "No `show ap config general` command")
             ap_list = self.extract_ap_info(show_ap_config_info)
             ap_list_report, ap_list_report_header = self.format_ap_list(ap_list) if ap_list else (None, None)
-        
-        ap_info = f"\n\nAP Information:\n{ap_list_report_header}\n{chr(10).join(ap_list_report)}" if ap_list_report else ""
 
+            ap_info = f"\n\nAP Information:\n{ap_list_report_header}\n{chr(10).join(ap_list_report)}" if ap_list_report else ""
+        else:
+            ap_info = ""
+        
         hostname = self.get_hostname(running_config)
         ip_address_info, ip_address = self.extract_ip_address_info(running_config, hostname)
         model_number, serial_number, uptime, software_version, boot_mode = self.extract_version_info(show_version_info, boot_mode_info)
