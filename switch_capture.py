@@ -165,7 +165,7 @@ Inventory Information:
         CSV_DICT["Total Disk"] = total_disk
         CSV_DICT["Used Disk"] = used_disk
         CSV_DICT["Disk Percent Used"] = disk_usage_percent
-        CSV_DICT["5-minute CPU Average"] = cpu_5min if cpu_utlization != "N/A" else cpu_utlization
+        CSV_DICT["5-minute CPU Average"] = cpu_5min if cpu_utlization == "N/A" else cpu_utlization
         CSV_DICT["1-minute CPU Average"] = cpu_1min
         CSV_DICT["5-second CPU Average"] = cpu_5sec
         CSV_DICT["Cisco Timestamp"] = cisco_datetime
